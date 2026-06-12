@@ -30,6 +30,7 @@ import {
   Mail,
   Users
 } from 'lucide-react';
+import SpaceLoader from '../components/SpaceLoader';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -75,6 +76,9 @@ interface SelectedItem {
   final_price: number;
   total_amount: number;
   remark?: string;
+  length?: number;
+  breadth?: number;
+  height?: number;
 }
 
 interface ProjectOption {
@@ -145,6 +149,28 @@ const upsertById = <T extends { id: string }>(items: T[], item: T) => [
   item,
   ...items.filter((existing) => existing.id !== item.id),
 ];
+
+const formatNumericValue = (val: any) => {
+  if (val === undefined || val === null || val === "") return "";
+  const num = Number(val);
+  if (isNaN(num) || num === 0) return "";
+  return num;
+};
+
+const sanitizeNumericString = (val: string): string => {
+  if (!val) return "";
+  let clean = val;
+  if (/^0{2,}\./.test(clean)) {
+    clean = clean.replace(/^0+/, '0');
+  }
+  if (/^0+[1-9]/.test(clean)) {
+    clean = clean.replace(/^0+/, '');
+  }
+  if (/^0+$/.test(clean) && clean.length > 1) {
+    clean = "0";
+  }
+  return clean;
+};
 
 export default function QuotationBuilder() {
   const router = useRouter();
@@ -405,6 +431,7 @@ export default function QuotationBuilder() {
   const [roomSearchQuery, setRoomSearchQuery] = useState("");
   const [showRoomDropdown, setShowRoomDropdown] = useState(false);
   const roomSearchRef = useRef<HTMLDivElement>(null);
+  const hasLoadedUrlQuote = useRef(false);
 
   const predefinedRoomTypes = [
     "Living Room", "Master Bedroom", "Bedroom 2", "Bedroom 3", "Kids Room",
@@ -465,7 +492,10 @@ export default function QuotationBuilder() {
         qty: Number(item.qty),
         margin_percent: Number(item.margin_percent),
         gst_percent: Number(item.gst_percent),
-        remark: item.remark || ""
+        remark: item.remark || "",
+        length: Number(item.length !== undefined ? item.length : 1),
+        breadth: Number(item.breadth !== undefined ? item.breadth : 1),
+        height: Number(item.height !== undefined ? item.height : 1)
       })),
       discount: Number(discount || 0),
       terms: terms || ""
@@ -488,7 +518,10 @@ export default function QuotationBuilder() {
         qty: Number(item.qty),
         margin_percent: Number(item.margin_percent),
         gst_percent: Number(item.gst_percent),
-        remark: item.remark || ""
+        remark: item.remark || "",
+        length: Number(item.length !== undefined ? item.length : 1),
+        breadth: Number(item.breadth !== undefined ? item.breadth : 1),
+        height: Number(item.height !== undefined ? item.height : 1)
       })),
       discount: Number(discount || 0),
       terms: terms || ""
@@ -574,6 +607,8 @@ export default function QuotationBuilder() {
   // Load URL query parameters (e.g. ?edit=xxx) and load quotation
   useEffect(() => {
     const loadQuotationFromUrl = async () => {
+      if (hasLoadedUrlQuote.current) return;
+      hasLoadedUrlQuote.current = true;
       if (typeof window === "undefined") return;
       const query = new URLSearchParams(window.location.search);
       const editId = query.get('edit');
@@ -726,6 +761,9 @@ export default function QuotationBuilder() {
                 pricing_type: catalogMatch?.pricing_type || "piece",
                 base_rate: item.snapshot_rate,
                 labor_cost: item.snapshot_labor_cost,
+                length: item.length !== undefined && item.length !== null ? item.length : 1,
+                breadth: item.breadth !== undefined && item.breadth !== null ? item.breadth : 1,
+                height: item.height !== undefined && item.height !== null ? item.height : 1,
                 final_price: item.final_price,
                 total_amount: item.total_amount,
                 remark: item.remark || ""
@@ -750,7 +788,10 @@ export default function QuotationBuilder() {
               qty: Number(item.qty),
               margin_percent: Number(item.margin_percent),
               gst_percent: Number(item.gst_percent),
-              remark: item.remark || ""
+              remark: item.remark || "",
+              length: Number(item.length !== undefined && item.length !== null ? item.length : 1),
+              breadth: Number(item.breadth !== undefined && item.breadth !== null ? item.breadth : 1),
+              height: Number(item.height !== undefined && item.height !== null ? item.height : 1)
             })),
             discount: Number(qData.discount_amount),
             terms: qData.terms_conditions || ""
@@ -764,7 +805,7 @@ export default function QuotationBuilder() {
       }
     };
     
-    if (catalog.length > 0) {
+    if (catalog.length > 0 && !hasLoadedUrlQuote.current) {
       loadQuotationFromUrl();
     }
   }, [catalog]);
@@ -884,7 +925,7 @@ export default function QuotationBuilder() {
 
   const totals = calculateTotals();
 
-  const saveQuotationToLocalDashboard = () => {
+  const saveQuotationToLocalDashboard = (): string | undefined => {
     if (typeof window === "undefined" || !window.localStorage) return;
 
     const now = new Date().toISOString();
@@ -941,6 +982,7 @@ export default function QuotationBuilder() {
     setQuotationVersion(nextQuote.version);
     setQuotationDate(new Date(nextQuote.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
     updateSavedStateKey(rooms, selectedItems);
+    return nextQuote.id;
   };
 
   const handleAddRoom = async (e: React.FormEvent) => {
@@ -992,12 +1034,26 @@ export default function QuotationBuilder() {
     const price_after_margin = base_cost * (1 + margin / 100);
     const final_unit_price = price_after_margin * (1 + gst / 100);
 
+    const length = 1;
+    const breadth = 1;
+    const height = 1;
+    const qty = 1;
+
+    let initialTotal = final_unit_price * qty;
+    if (catalogItem.pricing_type === 'sq_ft') {
+      const second_dim = height > 0 ? height : (breadth > 0 ? breadth : 1);
+      const area = length * second_dim;
+      initialTotal = final_unit_price * qty * area;
+    } else if (catalogItem.pricing_type === 'running_ft') {
+      initialTotal = final_unit_price * qty * length;
+    }
+
     const newItem: SelectedItem = {
       uid: `sel_${Date.now()}`,
       room_id: activeRoomId,
       category_id: catalogItem.category_id,
       item_id: catalogItem.id,
-      qty: catalogItem.pricing_type === 'sq_ft' ? 100 : 1,
+      qty: qty,
       margin_percent: margin,
       gst_percent: gst,
       name: catalogItem.name,
@@ -1005,8 +1061,11 @@ export default function QuotationBuilder() {
       pricing_type: catalogItem.pricing_type,
       base_rate: catalogItem.base_rate,
       labor_cost: catalogItem.labor_cost,
+      length: length,
+      breadth: breadth,
+      height: height,
       final_price: Math.round(final_unit_price * 100) / 100,
-      total_amount: Math.round(final_unit_price * (catalogItem.pricing_type === 'sq_ft' ? 100 : 1) * 100) / 100,
+      total_amount: Math.round(initialTotal * 100) / 100,
       remark: ""
     };
     setSelectedItems([...selectedItems, newItem]);
@@ -1082,7 +1141,11 @@ export default function QuotationBuilder() {
     setSelectedItems(selectedItems.filter(item => item.uid !== uid));
   };
 
-  const handleUpdateItemValue = (uid: string, field: 'qty' | 'margin_percent' | 'gst_percent' | 'base_rate' | 'labor_cost', val: number) => {
+  const handleUpdateItemValue = (
+    uid: string, 
+    field: 'qty' | 'margin_percent' | 'gst_percent' | 'base_rate' | 'labor_cost' | 'length' | 'breadth' | 'height', 
+    val: number
+  ) => {
     setSelectedItems(selectedItems.map(item => {
       if (item.uid === uid) {
         const updated = { ...item, [field]: val };
@@ -1090,7 +1153,50 @@ export default function QuotationBuilder() {
         const price_after_margin = base_cost * (1 + updated.margin_percent / 100);
         const final_unit_price = price_after_margin * (1 + updated.gst_percent / 100);
         updated.final_price = Math.round(final_unit_price * 100) / 100;
-        updated.total_amount = Math.round(final_unit_price * updated.qty * 100) / 100;
+        
+        if (updated.pricing_type === 'sq_ft') {
+          const l_val = updated.length !== undefined && updated.length > 0 ? updated.length : 0;
+          const h_val = updated.height !== undefined && updated.height > 0 ? updated.height : 0;
+          const b_val = updated.breadth !== undefined && updated.breadth > 0 ? updated.breadth : 0;
+          
+          const second_dim = h_val > 0 ? h_val : (b_val > 0 ? b_val : 1);
+          const area = l_val > 0 ? (l_val * second_dim) : 0;
+          updated.total_amount = Math.round(final_unit_price * updated.qty * area * 100) / 100;
+        } else if (updated.pricing_type === 'running_ft') {
+          const l_val = updated.length !== undefined && updated.length > 0 ? updated.length : 0;
+          updated.total_amount = Math.round(final_unit_price * updated.qty * l_val * 100) / 100;
+        } else {
+          updated.total_amount = Math.round(final_unit_price * updated.qty * 100) / 100;
+        }
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const handleUpdateItemPricingType = (uid: string, pricingType: string) => {
+    setSelectedItems(selectedItems.map(item => {
+      if (item.uid === uid) {
+        const updated = { ...item, pricing_type: pricingType };
+        const base_cost = updated.base_rate + updated.labor_cost;
+        const price_after_margin = base_cost * (1 + updated.margin_percent / 100);
+        const final_unit_price = price_after_margin * (1 + updated.gst_percent / 100);
+        updated.final_price = Math.round(final_unit_price * 100) / 100;
+        
+        if (updated.pricing_type === 'sq_ft') {
+          const l_val = updated.length !== undefined && updated.length > 0 ? updated.length : 1;
+          const h_val = updated.height !== undefined && updated.height > 0 ? updated.height : 1;
+          const b_val = updated.breadth !== undefined && updated.breadth > 0 ? updated.breadth : 1;
+          
+          const second_dim = h_val > 0 ? h_val : (b_val > 0 ? b_val : 1);
+          const area = l_val * second_dim;
+          updated.total_amount = Math.round(final_unit_price * updated.qty * area * 100) / 100;
+        } else if (updated.pricing_type === 'running_ft') {
+          const l_val = updated.length !== undefined && updated.length > 0 ? updated.length : 1;
+          updated.total_amount = Math.round(final_unit_price * updated.qty * l_val * 100) / 100;
+        } else {
+          updated.total_amount = Math.round(final_unit_price * updated.qty * 100) / 100;
+        }
         return updated;
       }
       return item;
@@ -1106,8 +1212,8 @@ export default function QuotationBuilder() {
     }));
   };
 
-  const handleSaveQuotation = async () => {
-    if (!validateStep1()) return;
+  const handleSaveQuotation = async (): Promise<string | null> => {
+    if (!validateStep1()) return null;
     setLoading(true);
     setSuccessMsg("");
     
@@ -1201,7 +1307,10 @@ export default function QuotationBuilder() {
           qty: item.qty,
           margin_percent: item.margin_percent,
           gst_percent: item.gst_percent,
-          remark: item.remark || ""
+          remark: item.remark || "",
+          length: item.length !== undefined ? item.length : 1,
+          breadth: item.breadth !== undefined ? item.breadth : 1,
+          height: item.height !== undefined ? item.height : 1
         }))
       };
 
@@ -1258,16 +1367,19 @@ export default function QuotationBuilder() {
           }
           setSelectedProjectId(finalProjectId);
         }
+        return data.id;
       } else {
         const errorData = await response.json().catch(() => ({}));
         console.error("Save failed:", errorData);
-        saveQuotationToLocalDashboard();
+        const localId = saveQuotationToLocalDashboard();
         setSuccessMsg("Quotation saved locally and added to dashboard.");
+        return localId || null;
       }
     } catch (error) {
       console.error("Save error:", error);
-      saveQuotationToLocalDashboard();
+      const localId = saveQuotationToLocalDashboard();
       setSuccessMsg("Quotation saved locally and added to dashboard.");
+      return localId || null;
     } finally {
       setLoading(false);
       setTimeout(() => setSuccessMsg(""), 5000);
@@ -1288,16 +1400,12 @@ export default function QuotationBuilder() {
   ];
 
   if (isAuthenticated === null) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <Loader2 className="w-10 h-10 text-amber-600 animate-spin" />
-        <p className="text-slate-400 text-xs mt-3 font-semibold tracking-wider uppercase">Verifying session...</p>
-      </div>
-    );
+    return <SpaceLoader loading={true} text="Verifying session..." />;
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20">
+      <SpaceLoader loading={loading && rooms.length === 0} text="Loading quotation details..." />
       
       {/* NAV BAR */}
       <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-6 py-4 md:px-10">
@@ -1684,8 +1792,9 @@ export default function QuotationBuilder() {
                   </label>
                   <input 
                     type="number" 
-                    value={projectBudget || ""}
-                    onChange={(e) => setProjectBudget(Number(e.target.value) || 0)}
+                    value={formatNumericValue(projectBudget)}
+                    onChange={(e) => setProjectBudget(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
                     placeholder="e.g. 500000"
                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 placeholder-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                   />
@@ -1959,7 +2068,21 @@ export default function QuotationBuilder() {
                                       {categories.find(c => c.id === item.category_id)?.name}
                                     </span>
                                     <span className="text-[11px] text-slate-400 font-medium">{item.brand}</span>
-                                    <span className="text-[10px] text-slate-300 bg-slate-50 px-1.5 py-0.5 rounded font-medium">{item.pricing_type}</span>
+                                    <select
+                                      value={item.pricing_type}
+                                      onChange={(e) => handleUpdateItemPricingType(item.uid, e.target.value)}
+                                      className={`text-[9px] px-2 py-0.5 rounded font-extrabold uppercase tracking-wider border cursor-pointer outline-none transition-all ${
+                                        item.pricing_type === 'sq_ft' 
+                                          ? 'bg-amber-100 text-amber-800 border-amber-200 focus:ring-1 focus:ring-amber-300' 
+                                          : item.pricing_type === 'running_ft'
+                                            ? 'bg-blue-100 text-blue-800 border-blue-200 focus:ring-1 focus:ring-blue-300'
+                                            : 'bg-slate-100 text-slate-600 border-slate-200/60 focus:ring-1 focus:ring-slate-300'
+                                      }`}
+                                    >
+                                      <option value="piece">Piece</option>
+                                      <option value="sq_ft">Sq Ft</option>
+                                      <option value="running_ft">Running Ft</option>
+                                    </select>
                                   </div>
                                   <h4 className="font-extrabold text-slate-800 text-[15px] mt-1.5 tracking-tight">{item.name}</h4>
                                 </div>
@@ -1982,14 +2105,77 @@ export default function QuotationBuilder() {
 
                               {/* Bottom row: All editable fields in a clean grid */}
                               <div className="px-5 pb-4 pt-2 bg-slate-50/60 border-t border-slate-100/80 space-y-3">
+                                {item.pricing_type === 'sq_ft' && (
+                                  <div className="grid grid-cols-4 gap-3 bg-amber-50/40 p-2.5 rounded-lg border border-amber-100/60 mb-2">
+                                    <div>
+                                      <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Length (L) ft</label>
+                                      <input 
+                                        type="number" 
+                                        value={formatNumericValue(item.length)} 
+                                        onChange={(e) => handleUpdateItemValue(item.uid, 'length', parseFloat(e.target.value) || 0)}
+                                        onFocus={(e) => e.target.select()}
+                                        className="w-full bg-white border border-amber-200/80 rounded-lg px-2.5 py-1.5 text-sm text-center font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Breadth (B) ft</label>
+                                      <input 
+                                        type="number" 
+                                        value={formatNumericValue(item.breadth)} 
+                                        onChange={(e) => handleUpdateItemValue(item.uid, 'breadth', parseFloat(e.target.value) || 0)}
+                                        onFocus={(e) => e.target.select()}
+                                        className="w-full bg-white border border-amber-200/80 rounded-lg px-2.5 py-1.5 text-sm text-center font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Height (H) ft</label>
+                                      <input 
+                                        type="number" 
+                                        value={formatNumericValue(item.height)} 
+                                        onChange={(e) => handleUpdateItemValue(item.uid, 'height', parseFloat(e.target.value) || 0)}
+                                        onFocus={(e) => e.target.select()}
+                                        className="w-full bg-white border border-amber-200/80 rounded-lg px-2.5 py-1.5 text-sm text-center font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div className="flex flex-col justify-center items-center bg-amber-100/30 border border-amber-200/80 rounded-lg p-1">
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Area (Sq Ft)</span>
+                                      <span className="font-extrabold text-sm text-amber-900 mt-0.5">
+                                        {((item.length || 0) * ((item.height || 0) || (item.breadth || 0) || 1)).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {item.pricing_type === 'running_ft' && (
+                                  <div className="grid grid-cols-2 gap-3 bg-blue-50/40 p-2.5 rounded-lg border border-blue-100/60 mb-2">
+                                    <div>
+                                      <label className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block mb-1">Length (L) ft</label>
+                                      <input 
+                                        type="number" 
+                                        value={formatNumericValue(item.length)} 
+                                        onChange={(e) => handleUpdateItemValue(item.uid, 'length', parseFloat(e.target.value) || 0)}
+                                        onFocus={(e) => e.target.select()}
+                                        className="w-full bg-white border border-blue-200/80 rounded-lg px-2.5 py-1.5 text-sm text-center font-bold focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                                      />
+                                    </div>
+                                    <div className="flex flex-col justify-center items-center bg-blue-100/30 border border-blue-200/80 rounded-lg p-1">
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Length (Ft)</span>
+                                      <span className="font-extrabold text-sm text-blue-900 mt-0.5">
+                                        {(item.length || 0).toFixed(2)} ft
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
                                 <div className="grid grid-cols-5 gap-3">
                                   {/* Base Rate */}
                                   <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Base ₹</label>
                                     <input 
                                       type="number" 
-                                      value={item.base_rate} 
+                                      value={formatNumericValue(item.base_rate)} 
                                       onChange={(e) => handleUpdateItemValue(item.uid, 'base_rate', parseFloat(e.target.value) || 0)}
+                                      onFocus={(e) => e.target.select()}
                                       className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-center font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
                                     />
                                   </div>
@@ -1998,8 +2184,9 @@ export default function QuotationBuilder() {
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Labor ₹</label>
                                     <input 
                                       type="number" 
-                                      value={item.labor_cost} 
+                                      value={formatNumericValue(item.labor_cost)} 
                                       onChange={(e) => handleUpdateItemValue(item.uid, 'labor_cost', parseFloat(e.target.value) || 0)}
+                                      onFocus={(e) => e.target.select()}
                                       className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-center font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
                                     />
                                   </div>
@@ -2008,8 +2195,9 @@ export default function QuotationBuilder() {
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Qty</label>
                                     <input 
                                       type="number" 
-                                      value={item.qty} 
+                                      value={formatNumericValue(item.qty)} 
                                       onChange={(e) => handleUpdateItemValue(item.uid, 'qty', parseFloat(e.target.value) || 0)}
+                                      onFocus={(e) => e.target.select()}
                                       className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-center font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
                                     />
                                   </div>
@@ -2018,8 +2206,9 @@ export default function QuotationBuilder() {
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Margin %</label>
                                     <input 
                                       type="number" 
-                                      value={item.margin_percent} 
+                                      value={formatNumericValue(item.margin_percent)} 
                                       onChange={(e) => handleUpdateItemValue(item.uid, 'margin_percent', parseFloat(e.target.value) || 0)}
+                                      onFocus={(e) => e.target.select()}
                                       className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-center font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
                                     />
                                   </div>
@@ -2131,14 +2320,16 @@ export default function QuotationBuilder() {
                         <input
                           type="number"
                           value={newCatalogItem.base_rate}
-                          onChange={(e) => setNewCatalogItem({ ...newCatalogItem, base_rate: e.target.value })}
+                          onChange={(e) => setNewCatalogItem({ ...newCatalogItem, base_rate: sanitizeNumericString(e.target.value) })}
+                          onFocus={(e) => e.target.select()}
                           placeholder="Base rate"
                           className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:border-amber-400 focus:ring-amber-100 outline-none"
                         />
                         <input
                           type="number"
                           value={newCatalogItem.labor_cost}
-                          onChange={(e) => setNewCatalogItem({ ...newCatalogItem, labor_cost: e.target.value })}
+                          onChange={(e) => setNewCatalogItem({ ...newCatalogItem, labor_cost: sanitizeNumericString(e.target.value) })}
+                          onFocus={(e) => e.target.select()}
                           placeholder="Labor"
                           className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:border-amber-400 focus:ring-amber-100 outline-none"
                         />
@@ -2355,8 +2546,9 @@ export default function QuotationBuilder() {
                       <label className="text-xs text-slate-400 font-semibold block mb-1.5">Discount (₹)</label>
                       <input 
                         type="number" 
-                        value={discount}
+                        value={formatNumericValue(discount)}
                         onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                        onFocus={(e) => e.target.select()}
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm"
                       />
                     </div>
@@ -2416,15 +2608,29 @@ export default function QuotationBuilder() {
                       disabled={loading || isSaveDisabled}
                       className="w-full flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-950 text-white border border-stone-950 font-bold py-3 px-4 rounded-xl text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                     >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      {loading ? <SpaceLoader fullPage={false} size="sm" /> : <Save className="w-4 h-4" />}
                       {isSaveDisabled ? "Already Saved (No Changes)" : "Save Quotation"}
                     </button>
 
-                    <button 
-                      onClick={() => {
-                        if (savedQuotationId) {
+                     <button 
+                      onClick={async () => {
+                        let targetQuoteId = savedQuotationId;
+                        
+                        // If there are unsaved changes, auto-save first!
+                        if (!isSaveDisabled) {
+                          showToastMsg("Saving your changes first...", "success");
+                          const newId = await handleSaveQuotation();
+                          if (newId) {
+                            targetQuoteId = newId;
+                          } else {
+                            showToastMsg("Failed to save changes. Download cancelled.", "error");
+                            return;
+                          }
+                        }
+                        
+                        if (targetQuoteId) {
                           const link = document.createElement('a');
-                          link.href = `${API_BASE_URL}/quotations/${savedQuotationId}/pdf`;
+                          link.href = `${API_BASE_URL}/quotations/${targetQuoteId}/pdf`;
                           link.setAttribute('download', '');
                           document.body.appendChild(link);
                           link.click();
@@ -2434,7 +2640,7 @@ export default function QuotationBuilder() {
                         }
                       }}
                       className={`w-full flex items-center justify-center gap-2 font-bold py-3 px-4 rounded-xl text-sm shadow-md transition-all focus:outline-none ${
-                        savedQuotationId 
+                        (savedQuotationId || !isSaveDisabled) 
                           ? 'bg-gradient-to-r from-stone-950 to-stone-900 hover:from-stone-900 hover:to-stone-800 text-white hover:shadow-lg focus:ring-2 focus:ring-amber-500/40' 
                           : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                       }`}
@@ -2663,7 +2869,7 @@ export default function QuotationBuilder() {
                 >
                   {profileSaving ? (
                     <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <SpaceLoader fullPage={false} size="sm" />
                       <span>Saving Details...</span>
                     </>
                   ) : (

@@ -218,3 +218,224 @@ select:focus {
 .btn-secondary:hover {
   background: #e2e8f0;
 }
+
+/* ============================================= */
+/*  SPACEIO 3D BOXES LOADER (BRAND THEMED)        */
+/* ============================================= */
+.boxes {
+  --size: 32px;
+  --duration: 800ms;
+  height: calc(var(--size) * 2);
+  width: calc(var(--size) * 3);
+  position: relative;
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
+  margin-top: calc(var(--size) * 1.5 * -1);
+  transform: rotateX(60deg) rotateZ(45deg) rotateY(0deg) translateZ(0px);
+}
+
+.boxes .box {
+  width: var(--size);
+  height: var(--size);
+  top: 0;
+  left: 0;
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.boxes .box:nth-child(1) {
+  transform: translate(100%, 0);
+  -webkit-animation: box1 var(--duration) linear infinite;
+  animation: box1 var(--duration) linear infinite;
+}
+
+.boxes .box:nth-child(2) {
+  transform: translate(0, 100%);
+  -webkit-animation: box2 var(--duration) linear infinite;
+  animation: box2 var(--duration) linear infinite;
+}
+
+.boxes .box:nth-child(3) {
+  transform: translate(100%, 100%);
+  -webkit-animation: box3 var(--duration) linear infinite;
+  animation: box3 var(--duration) linear infinite;
+}
+
+.boxes .box:nth-child(4) {
+  transform: translate(200%, 0);
+  -webkit-animation: box4 var(--duration) linear infinite;
+  animation: box4 var(--duration) linear infinite;
+}
+
+.boxes .box > div {
+  --background: #8ebb96; /* Spacio Sage Green */
+  --top: auto;
+  --right: auto;
+  --bottom: auto;
+  --left: auto;
+  --translateZ: calc(var(--size) / 2);
+  --rotateY: 0deg;
+  --rotateX: 0deg;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  top: var(--top);
+  right: var(--right);
+  bottom: var(--bottom);
+  left: var(--left);
+  transform: rotateY(var(--rotateY)) rotateX(var(--rotateX)) translateZ(var(--translateZ));
+}
+
+.boxes .box > div:nth-child(1) {
+  --top: 0;
+  --left: 0;
+}
+
+.boxes .box > div:nth-child(2) {
+  --background: #30573e; /* Spacio Forest Green */
+  --right: 0;
+  --rotateY: 90deg;
+}
+
+.boxes .box > div:nth-child(3) {
+  --background: #5d8966; /* Spacio Medium Sage Green */
+  --rotateX: -90deg;
+}
+
+.boxes .box > div:nth-child(4) {
+  --background: #e5f4e8; /* Spacio Soft Mint Highlight */
+  --top: 0;
+  --left: 0;
+  --translateZ: calc(var(--size) * 3 * -1);
+}
+
+@-webkit-keyframes box1 {
+  0%, 50% {
+    transform: translate(100%, 0);
+  }
+
+  100% {
+    transform: translate(200%, 0);
+  }
+}
+
+@keyframes box1 {
+  0%, 50% {
+    transform: translate(100%, 0);
+  }
+
+  100% {
+    transform: translate(200%, 0);
+  }
+}
+
+@-webkit-keyframes box2 {
+  0% {
+    transform: translate(0, 100%);
+  }
+
+  50% {
+    transform: translate(0, 0);
+  }
+
+  100% {
+    transform: translate(100%, 0);
+  }
+}
+
+@keyframes box2 {
+  0% {
+    transform: translate(0, 100%);
+  }
+
+  50% {
+    transform: translate(0, 0);
+  }
+
+  100% {
+    transform: translate(100%, 0);
+  }
+}
+
+@-webkit-keyframes box3 {
+  0%, 50% {
+    transform: translate(100%, 100%);
+  }
+
+  100% {
+    transform: translate(0, 100%);
+  }
+}
+
+@keyframes box3 {
+  0%, 50% {
+    transform: translate(100%, 100%);
+  }
+
+  100% {
+    transform: translate(0, 100%);
+  }
+}
+
+@-webkit-keyframes box4 {
+  0% {
+    transform: translate(200%, 0);
+  }
+
+  50% {
+    transform: translate(200%, 100%);
+  }
+
+  100% {
+    transform: translate(100%, 100%);
+  }
+}
+
+@keyframes box4 {
+  0% {
+    transform: translate(200%, 0);
+  }
+
+  50% {
+    transform: translate(200%, 100%);
+  }
+
+  100% {
+    transform: translate(100%, 100%);
+  }
+}
+
+@keyframes space-pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 8px rgba(142, 187, 150, 0.35)) drop-shadow(0 0 15px rgba(142, 187, 150, 0.15));
+  }
+  50% {
+    transform: scale(1.04);
+    filter: drop-shadow(0 0 16px rgba(142, 187, 150, 0.6)) drop-shadow(0 0 25px rgba(142, 187, 150, 0.3));
+  }
+}
+
+@keyframes space-shimmer-text {
+  0%, 100% {
+    opacity: 0.6;
+    letter-spacing: 0.15em;
+  }
+  50% {
+    opacity: 1;
+    letter-spacing: 0.25em;
+    text-shadow: 0 0 8px rgba(142, 187, 150, 0.3);
+  }
+}
+
+.animate-space-pulse-glow {
+  animation: space-pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-space-shimmer-text {
+  animation: space-shimmer-text 2.5s ease-in-out infinite;
+}
+
+
+

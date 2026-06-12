@@ -12,7 +12,6 @@ import {
   Download, 
   ArrowRight,
   Plus,
-  Loader2,
   User,
   Phone,
   Mail,
@@ -27,6 +26,7 @@ import {
   Save,
   Users
 } from 'lucide-react';
+import SpaceLoader from '../components/SpaceLoader';
 import { 
   ResponsiveContainer, 
   AreaChart, 
@@ -258,14 +258,15 @@ export default function Dashboard() {
   }, []);
 
   const [stats, setStats] = useState({
-    activeProjects: 3,
-    recentQuotes: 6,
-    pendingQuotes: 2,
-    revenue: 685000,
-    collected: 305000,
-    pendingPayments: 380000,
+    activeProjects: 0,
+    recentQuotes: 0,
+    pendingQuotes: 0,
+    revenue: 0,
+    collected: 0,
+    pendingPayments: 0,
     delayedProjects: 0
   });
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -314,6 +315,19 @@ export default function Dashboard() {
 
   useEffect(() => {
     setMounted(true);
+    // Load local storage data immediately on mount to show cached stats first!
+    try {
+      const localData = readLocalDashboardData();
+      if (localData.projects.length > 0 || localData.quotes.length > 0) {
+        setClients(localData.clients);
+        setProjects(localData.projects);
+        setRecentQuotes(localData.quotes);
+        updateStatsFromData(localData.projects, localData.quotes, localData.payments || []);
+        setHasLoaded(true);
+      }
+    } catch (e) {
+      console.error("Failed to load initial local data", e);
+    }
   }, []);
 
   const updateStatsFromData = (projectsData: Project[], quotesData: Quote[], paymentsData: any[]) => {
@@ -412,11 +426,13 @@ export default function Dashboard() {
           setRecentQuotes(allQuotes);
           
           updateStatsFromData(projectsData, allQuotes, allPayments);
+          setHasLoaded(true);
         } else {
           setClients(localData.clients);
           setProjects(localData.projects);
           setRecentQuotes(localData.quotes);
           updateStatsFromData(localData.projects, localData.quotes, localData.payments || []);
+          setHasLoaded(true);
         }
       } catch (err) {
         console.log("Backend offline. Rendering saved local data.", err);
@@ -425,6 +441,7 @@ export default function Dashboard() {
         setProjects(localData.projects);
         setRecentQuotes(localData.quotes);
         updateStatsFromData(localData.projects, localData.quotes, localData.payments || []);
+        setHasLoaded(true);
       } finally {
         setLoading(false);
       }
@@ -676,16 +693,12 @@ export default function Dashboard() {
   };
 
   if (isAuthenticated === null) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <Loader2 className="w-10 h-10 text-amber-600 animate-spin" />
-        <p className="text-slate-400 text-xs mt-3 font-semibold tracking-wider uppercase">Verifying session...</p>
-      </div>
-    );
+    return <SpaceLoader loading={true} text="Verifying session..." />;
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20">
+      <SpaceLoader loading={!hasLoaded} text="Loading dashboard data..." />
       
       {/* TOP NAV BAR */}
       <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-6 py-4 md:px-10">
@@ -800,7 +813,11 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4">
-              <span className="text-3xl font-extrabold text-slate-800">{stats.activeProjects}</span>
+              {!hasLoaded ? (
+                <div className="h-9 w-16 bg-slate-200 animate-pulse rounded-lg mb-1.5" />
+              ) : (
+                <span className="text-3xl font-extrabold text-slate-800">{stats.activeProjects}</span>
+              )}
               <div className="text-xs text-amber-700 flex items-center gap-1 mt-2.5 font-semibold">
                 <TrendingUp className="w-3.5 h-3.5" />
                 <span>Active design & build pipeline</span>
@@ -817,7 +834,11 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4">
-              <span className="text-3xl font-extrabold text-slate-800">{stats.recentQuotes}</span>
+              {!hasLoaded ? (
+                <div className="h-9 w-16 bg-slate-200 animate-pulse rounded-lg mb-1.5" />
+              ) : (
+                <span className="text-3xl font-extrabold text-slate-800">{stats.recentQuotes}</span>
+              )}
               <div className="text-xs text-blue-600 flex items-center gap-1 mt-2.5 font-semibold">
                 <TrendingUp className="w-3.5 h-3.5" />
                 <span>Total proposal revisions</span>
@@ -834,7 +855,11 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4">
-              <span className="text-3xl font-extrabold text-slate-800">{stats.pendingQuotes}</span>
+              {!hasLoaded ? (
+                <div className="h-9 w-16 bg-slate-200 animate-pulse rounded-lg mb-1.5" />
+              ) : (
+                <span className="text-3xl font-extrabold text-slate-800">{stats.pendingQuotes}</span>
+              )}
               <div className="text-xs text-amber-600 flex items-center gap-1 mt-2.5 font-semibold">
                 <Clock className="w-3.5 h-3.5" />
                 <span>Awaiting client signature</span>
@@ -851,18 +876,28 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4">
-              <span className="text-3xl font-extrabold text-slate-800">
-                ₹{stats.revenue.toLocaleString('en-IN')}
-              </span>
-              <div className="text-[10px] text-slate-500 flex flex-col gap-0.5 mt-2.5 font-semibold">
-                <div className="text-emerald-600 flex items-center gap-1">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  <span>Collected: ₹{stats.collected.toLocaleString('en-IN')}</span>
+              {!hasLoaded ? (
+                <div className="space-y-2 mb-1">
+                  <div className="h-9 w-32 bg-slate-200 animate-pulse rounded-lg" />
+                  <div className="h-3 w-28 bg-slate-100 animate-pulse rounded" />
+                  <div className="h-3 w-24 bg-slate-100 animate-pulse rounded" />
                 </div>
-                <div className="text-slate-400 pl-5">
-                  Pending: ₹{stats.pendingPayments.toLocaleString('en-IN')}
-                </div>
-              </div>
+              ) : (
+                <>
+                  <span className="text-3xl font-extrabold text-slate-800">
+                    ₹{stats.revenue.toLocaleString('en-IN')}
+                  </span>
+                  <div className="text-[10px] text-slate-500 flex flex-col gap-0.5 mt-2.5 font-semibold">
+                    <div className="text-emerald-600 flex items-center gap-1">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>Collected: ₹{stats.collected.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="text-slate-400 pl-5">
+                      Pending: ₹{stats.pendingPayments.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -875,7 +910,11 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4">
-              <span className="text-3xl font-extrabold text-slate-800">{stats.delayedProjects}</span>
+              {!hasLoaded ? (
+                <div className="h-9 w-16 bg-slate-200 animate-pulse rounded-lg mb-1.5" />
+              ) : (
+                <span className="text-3xl font-extrabold text-slate-800">{stats.delayedProjects}</span>
+              )}
               <div className="text-xs text-rose-500 flex items-center gap-1 mt-2.5 font-semibold">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>Milestones delayed or on hold</span>
@@ -904,13 +943,13 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="w-full">
+            <div className="w-full h-[280px] relative">
               {!mounted ? (
-                <div className="h-[280px] flex items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-amber-600 animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <SpaceLoader fullPage={false} size="md" />
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
@@ -984,56 +1023,60 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="w-full flex-grow flex items-center justify-center">
+            <div className="w-full flex-grow flex flex-col items-center justify-center min-h-[240px] relative">
               {!mounted ? (
-                <div className="h-[240px] flex items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-amber-600 animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <SpaceLoader fullPage={false} size="md" />
                 </div>
               ) : (
                 rightChartTab === 'stages' ? (
                   <div className="flex flex-col items-center justify-center w-full">
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie
-                          data={statusData}
-                          innerRadius={60}
-                          outerRadius={80}
-                          paddingAngle={3}
-                          dataKey="value"
-                        >
-                          {statusData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || '#94A3B8'} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<CustomPieTooltip />} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <div className="w-full h-[180px] relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={statusData}
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {statusData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || '#94A3B8'} />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<CustomPieTooltip />} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center mt-3 max-w-xs">
                       {statusData.map((entry, index) => (
                         <div key={index} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[entry.name] }} />
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[entry.name] || '#94A3B8' }} />
                           <span>{entry.name} ({entry.value})</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={budgetData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
-                      <XAxis 
-                        type="number" 
-                        stroke="#94A3B8" 
-                        fontSize={10} 
-                        tickLine={false} 
-                        axisLine={false}
-                        tickFormatter={(val) => `₹${val >= 100000 ? `${(val / 100000).toFixed(1)}L` : val.toLocaleString('en-IN')}`}
-                      />
-                      <YAxis dataKey="name" type="category" stroke="#64748B" fontSize={10} width={80} tickLine={false} axisLine={false} />
-                      <Tooltip content={<CustomBarTooltip />} />
-                      <Bar dataKey="budget" fill="#8B5CF6" radius={[0, 8, 8, 0]} maxBarSize={20} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="w-full h-[240px] relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={budgetData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+                        <XAxis 
+                          type="number" 
+                          stroke="#94A3B8" 
+                          fontSize={10} 
+                          tickLine={false} 
+                          axisLine={false}
+                          tickFormatter={(val) => `₹${val >= 100000 ? `${(val / 100000).toFixed(1)}L` : val.toLocaleString('en-IN')}`}
+                        />
+                        <YAxis dataKey="name" type="category" stroke="#64748B" fontSize={10} width={80} tickLine={false} axisLine={false} />
+                        <Tooltip content={<CustomBarTooltip />} />
+                        <Bar dataKey="budget" fill="#8B5CF6" radius={[0, 8, 8, 0]} maxBarSize={20} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 )
               )}
             </div>
@@ -1158,7 +1201,7 @@ export default function Dashboard() {
                   {loading && (
                     <tr>
                       <td colSpan={6} className="text-center py-8">
-                        <Loader2 className="w-6 h-6 text-amber-600 animate-spin mx-auto" />
+                        <SpaceLoader fullPage={false} size="md" />
                       </td>
                     </tr>
                   )}
@@ -1265,7 +1308,7 @@ export default function Dashboard() {
                             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 disabled:opacity-50 transition-colors flex items-center justify-center border border-slate-200 bg-white"
                           >
                             {downloadingId === q.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                              <SpaceLoader fullPage={false} size="sm" />
                             ) : (
                               <Download className="w-4 h-4" />
                             )}
@@ -1548,7 +1591,7 @@ export default function Dashboard() {
                 >
                   {profileSaving ? (
                     <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <SpaceLoader fullPage={false} size="sm" />
                       <span>Saving Details...</span>
                     </>
                   ) : (

@@ -18,6 +18,7 @@ import {
   X,
   Upload
 } from 'lucide-react';
+import SpaceLoader from '../components/SpaceLoader';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -391,6 +392,7 @@ export default function UsersManagement() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20 py-8 px-4 sm:px-6 lg:px-8">
+      <SpaceLoader loading={loading} text="Loading users directory..." />
       <div className="max-w-6xl mx-auto">
         
         {/* Header */}
@@ -474,13 +476,7 @@ export default function UsersManagement() {
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
-            <p className="text-slate-500 font-semibold text-sm">Loading users directory...</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
+        <div className="space-y-8">
             
             {/* PENDING APPROVALS SECTION */}
             {pendingUsers.length > 0 && (
@@ -543,7 +539,7 @@ export default function UsersManagement() {
                           className="flex items-center justify-center gap-1 bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] shadow-sm shadow-amber-500/10 transition-all shrink-0"
                         >
                           {actionLoadingId === u.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <SpaceLoader fullPage={false} size="sm" />
                           ) : (
                             <UserCheck className="w-3 h-3" />
                           )}
@@ -674,7 +670,7 @@ export default function UsersManagement() {
                                     title="Save changes"
                                   >
                                     {actionLoadingId === u.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      <SpaceLoader fullPage={false} size="sm" />
                                     ) : (
                                       <Check className="w-4 h-4" />
                                     )}
@@ -697,7 +693,7 @@ export default function UsersManagement() {
                                     title="Delete user account"
                                   >
                                     {actionLoadingId === u.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                                      <SpaceLoader fullPage={false} size="sm" />
                                     ) : (
                                       <Trash2 className="w-4 h-4" />
                                     )}
@@ -714,7 +710,6 @@ export default function UsersManagement() {
               )}
             </div>
           </div>
-        )}
         {/* Footer */}
         <footer className="mt-12 border-t border-slate-100 py-6 text-center text-xs text-slate-400 font-bold">
           <div className="flex justify-center items-center gap-2">
@@ -968,7 +963,7 @@ export default function UsersManagement() {
                   className="bg-amber-500 hover:bg-amber-600 text-white font-extrabold px-6 py-2 rounded-xl text-xs shadow-sm shadow-amber-500/10 transition-all flex items-center gap-2"
                   disabled={modalLoading}
                 >
-                  {modalLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {modalLoading && <SpaceLoader fullPage={false} size="sm" />}
                   <span>Save Changes</span>
                 </button>
               </div>
@@ -984,8 +979,7 @@ export default function UsersManagement() {
               
               {subsLoading ? (
                 <div className="flex items-center justify-center py-6 text-slate-400 text-xs font-semibold gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                  <span>Loading payment history...</span>
+                  <SpaceLoader fullPage={false} size="sm" text="Loading payment history..." />
                 </div>
               ) : subscriptions.length === 0 ? (
                 <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs font-bold">

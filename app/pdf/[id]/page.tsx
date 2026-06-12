@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Loader2, ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
+import SpaceLoader from '../../components/SpaceLoader';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -56,12 +57,7 @@ export default function PDFViewerPage() {
   }
 
   if (!pdfUrl) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-        <p className="text-slate-300 text-xs font-semibold">Generating Spacio PDF Document...</p>
-      </div>
-    );
+    return <SpaceLoader loading={true} text="Generating Spacio PDF Document..." />;
   }
 
   return (

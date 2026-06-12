@@ -25,6 +25,7 @@ import {
   Save,
   Users
 } from 'lucide-react';
+import SpaceLoader from '../../components/SpaceLoader';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -109,6 +110,21 @@ const mergeById = <T extends { id: string }>(primary: T[], secondary: T[]) => {
     seen.add(item.id);
     return true;
   });
+};
+
+const sanitizeNumericString = (val: string): string => {
+  if (!val) return "";
+  let clean = val;
+  if (/^0{2,}\./.test(clean)) {
+    clean = clean.replace(/^0+/, '0');
+  }
+  if (/^0+[1-9]/.test(clean)) {
+    clean = clean.replace(/^0+/, '');
+  }
+  if (/^0+$/.test(clean) && clean.length > 1) {
+    clean = "0";
+  }
+  return clean;
 };
 
 export default function ClientProfile({ params }: { params: { id: string } }) {
@@ -663,18 +679,13 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-10 h-10 text-amber-600 animate-spin" />
-          <p className="text-slate-500 font-semibold text-sm">Loading Client Profile...</p>
-        </div>
-      </div>
-    );
+  // Early return for auth checking
+  if (isAuthenticated === null) {
+    return <SpaceLoader loading={true} text="Verifying session..." />;
   }
 
-  if (!client) {
+  // If loading is complete but client is not found, return Client Not Found early
+  if (!loading && !client) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center p-8 bg-white rounded-2xl shadow-card max-w-sm border border-slate-100">
@@ -690,17 +701,17 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
     );
   }
 
-  if (isAuthenticated === null) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <Loader2 className="w-10 h-10 text-amber-600 animate-spin" />
-        <p className="text-slate-400 text-xs mt-3 font-semibold tracking-wider uppercase">Verifying session...</p>
-      </div>
-    );
-  }
+  // Safe client wrapper to prevent page crashing while loading
+  const displayClient = client || {
+    name: "Loading Client Profile...",
+    phone: "Loading...",
+    email: "Loading...",
+    address: "Loading site address..."
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20">
+      <SpaceLoader loading={loading} text="Loading Client Profile..." />
       
       {/* NAV BAR */}
       <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-6 py-4 md:px-10">
@@ -821,7 +832,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                   </div>
                 )}
               </div>
-              <h2 className="text-2xl font-black text-slate-800 mt-2">{client.name}</h2>
+              <h2 className="text-2xl font-black text-slate-800 mt-2">{displayClient.name}</h2>
               <p className="text-sm font-bold text-slate-500 mt-1">
                 Project: <span className="text-slate-800 font-extrabold">{project ? project.name : 'N/A'}</span>
               </p>
@@ -849,7 +860,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">Phone</span>
-                  <span className="text-slate-700 font-bold">{client.phone}</span>
+                  <span className="text-slate-700 font-bold">{displayClient.phone}</span>
                 </div>
               </div>
 
@@ -859,7 +870,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 </div>
                 <div className="min-w-0">
                   <span className="text-slate-400 block text-[10px]">Email</span>
-                  <span className="text-slate-700 font-bold block truncate">{client.email}</span>
+                  <span className="text-slate-700 font-bold block truncate">{displayClient.email}</span>
                 </div>
               </div>
 
@@ -869,7 +880,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">Site Address</span>
-                  <span className="text-slate-700 font-bold leading-normal block">{project ? project.site_address : client.address}</span>
+                  <span className="text-slate-700 font-bold leading-normal block">{project ? project.site_address : displayClient.address}</span>
                 </div>
               </div>
             </div>
@@ -892,8 +903,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
 
           {loadingQuotes ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
-              <p className="text-xs text-slate-400 mt-2 font-medium">Fetching revision history...</p>
+              <SpaceLoader fullPage={false} size="md" text="Fetching revision history..." />
             </div>
           ) : quotes.length === 0 ? (
             <div className="text-center py-16 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
@@ -947,7 +957,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                           className="p-2.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-50 rounded-xl transition-colors border border-slate-200 bg-white shadow-sm flex items-center justify-center"
                         >
                           {downloadingId === q.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                            <SpaceLoader fullPage={false} size="sm" />
                           ) : (
                             <Download className="w-4 h-4" />
                           )}
@@ -1083,7 +1093,8 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                           type="number" 
                           required
                           value={paymentAmount}
-                          onChange={(e) => setPaymentAmount(e.target.value)}
+                          onChange={(e) => setPaymentAmount(sanitizeNumericString(e.target.value))}
+                          onFocus={(e) => e.target.select()}
                           placeholder="e.g. 150000"
                           className="w-full text-xs border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 p-2.5 rounded-xl outline-none"
                         />
@@ -1409,7 +1420,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 >
                   {profileSaving ? (
                     <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <SpaceLoader fullPage={false} size="sm" />
                       <span>Saving Details...</span>
                     </>
                   ) : (

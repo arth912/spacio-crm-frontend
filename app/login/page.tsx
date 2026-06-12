@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import SpaceLoader from '../components/SpaceLoader';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -351,7 +352,7 @@ function LoginFormContent() {
                   className="w-full flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-955 text-white font-bold py-3 px-4 rounded-xl text-sm shadow-md transition-all disabled:opacity-60"
                 >
                   {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <SpaceLoader fullPage={false} size="sm" />
                   ) : (
                     <>
                       <span>Pay & Activate Account</span>
@@ -657,7 +658,7 @@ function LoginFormContent() {
                 className="w-full flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-950 text-white border border-stone-950 font-bold py-3 px-4 rounded-xl text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
               >
                 {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <SpaceLoader fullPage={false} size="sm" />
                 ) : (
                   <>
                     <span>{activeTab === 'login' ? 'Sign In' : 'Create Account'}</span>
@@ -686,10 +687,7 @@ function LoginFormContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <Loader2 className="w-10 h-10 text-amber-600 animate-spin" />
-        <p className="text-slate-400 text-xs mt-3 font-semibold tracking-wider uppercase">Loading Authentication...</p>
-      </div>
+      <SpaceLoader loading={true} text="Loading Authentication..." />
     }>
       <LoginFormContent />
     </Suspense>
