@@ -86,7 +86,7 @@ function LoginFormContent() {
         key: payInfo.razorpay_key_id,
         amount: payInfo.amount,
         currency: "INR",
-        name: "Spacio CRM",
+        name: "SpaceIO CRM",
         description: `${payInfo.plan === 'monthly' ? 'Monthly' : 'Yearly'} Plan Subscription`,
         image: "/spacio_logo.png",
         order_id: payInfo.razorpay_order_id,
@@ -207,7 +207,7 @@ function LoginFormContent() {
             key: data.razorpay_key_id,
             amount: data.amount,
             currency: data.currency,
-            name: "Spacio CRM",
+            name: "SpaceIO CRM",
             description: `${selectedPlan === 'monthly' ? 'Monthly' : 'Yearly'} Plan Subscription`,
             image: "/spacio_logo.png",
             order_id: data.razorpay_order_id,
@@ -292,11 +292,11 @@ function LoginFormContent() {
         <div className="flex justify-center items-center gap-3">
           <img 
             src="/spacio_logo.png" 
-            alt="Spacio Logo" 
+            alt="SpaceIO Logo" 
             className="w-10 h-10 object-contain rounded-xl shadow-md"
           />
           <div className="border-l border-slate-200 pl-3">
-            <span className="text-xl font-black text-slate-900 tracking-tight leading-none block">Spacio</span>
+            <span className="text-xl font-black text-slate-900 tracking-tight leading-none block">SpaceIO</span>
             <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider mt-0.5 block">Quotation Builder Auth</span>
           </div>
         </div>
@@ -310,7 +310,7 @@ function LoginFormContent() {
               <div className="text-center">
                 <span className="text-3xl">💳</span>
                 <h3 className="text-lg font-black text-slate-900 mt-2">Subscription Payment Pending</h3>
-                <p className="text-xs text-slate-500 font-semibold mt-1">Complete your registration payment to activate your Spacio CRM account.</p>
+                <p className="text-xs text-slate-500 font-semibold mt-1">Complete your registration payment to activate your SpaceIO CRM account.</p>
               </div>
 
               {errorMsg && (
@@ -612,7 +612,7 @@ function LoginFormContent() {
                           <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Monthly Plan</span>
                           {selectedPlan === 'monthly' && <span className="w-2.5 h-2.5 rounded-full bg-stone-900" />}
                         </div>
-                        <p className="text-slate-400 text-[10px] font-semibold">Perfect for designers testing Spacio CRM.</p>
+                        <p className="text-slate-400 text-[10px] font-semibold">Perfect for designers testing SpaceIO CRM.</p>
                       </div>
                       <div className="mt-4">
                         <span className="text-2xl font-black text-slate-900">₹499</span>
@@ -676,8 +676,8 @@ function LoginFormContent() {
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-slate-400 font-bold flex justify-center items-center gap-1.5 animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <span>Powered by</span>
-          <img src="/spacio_logo.png" alt="Spacio Logo" className="h-4 object-contain opacity-60 hover:opacity-100 transition-opacity" />
-          <span className="text-slate-500">Spacio CRM</span>
+          <img src="/spacio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain opacity-60 hover:opacity-100 transition-opacity" />
+          <span className="text-slate-500">SpaceIO CRM</span>
         </div>
       </div>
     </div>

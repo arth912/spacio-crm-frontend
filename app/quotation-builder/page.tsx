@@ -302,6 +302,7 @@ export default function QuotationBuilder() {
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [savedQuotationId, setSavedQuotationId] = useState<string | null>(null);
   const [savedStateKey, setSavedStateKey] = useState<string>("");
@@ -2835,24 +2836,53 @@ export default function QuotationBuilder() {
                         }
                         
                         if (targetQuoteId) {
-                          const link = document.createElement('a');
-                          link.href = `${API_BASE_URL}/quotations/${targetQuoteId}/pdf`;
-                          link.setAttribute('download', '');
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
+                          try {
+                            setPdfLoading(true);
+                            showToastMsg("Generating PDF proposal...", "success");
+                            const response = await fetch(`${API_BASE_URL}/quotations/${targetQuoteId}/pdf`, {
+                              headers: getAuthHeaders()
+                            });
+                            if (!response.ok) throw new Error("Failed to download PDF");
+                            
+                            // Extract filename from headers if available
+                            const contentDisposition = response.headers.get('Content-Disposition');
+                            let filename = `Proposal_Revision_${quotationVersion || 'V'}.pdf`;
+                            if (contentDisposition) {
+                              const match = contentDisposition.match(/filename="?([^"]+)"?/);
+                              if (match && match[1]) {
+                                filename = match[1];
+                              }
+                            }
+
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.setAttribute('download', filename);
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            window.URL.revokeObjectURL(url);
+                            showToastMsg("PDF downloaded successfully!", "success");
+                          } catch (error) {
+                            console.error(error);
+                            showToastMsg("Error generating PDF. Please check backend connection.", "error");
+                          } finally {
+                            setPdfLoading(false);
+                          }
                         } else {
                           showToastMsg("Please save the quotation first before downloading the PDF.", "warning");
                         }
                       }}
+                      disabled={pdfLoading || (!savedQuotationId && isSaveDisabled)}
                       className={`w-full flex items-center justify-center gap-2 font-bold py-3 px-4 rounded-xl text-sm shadow-md transition-all focus:outline-none ${
-                        (savedQuotationId || !isSaveDisabled) 
+                        (savedQuotationId || !isSaveDisabled) && !pdfLoading
                           ? 'bg-gradient-to-r from-stone-950 to-stone-900 hover:from-stone-900 hover:to-stone-800 text-white hover:shadow-lg focus:ring-2 focus:ring-amber-500/40' 
-                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-70'
                       }`}
                     >
-                      <Download className="w-4 h-4" />
-                      Download PDF
+                      {pdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {pdfLoading ? "Generating PDF..." : "Download PDF"}
                     </button>
                   </div>
                 </div>
@@ -2867,8 +2897,8 @@ export default function QuotationBuilder() {
         <footer className="mt-12 border-t border-slate-100 py-6 text-center text-xs text-slate-400 font-bold">
           <div className="flex justify-center items-center gap-2">
             <span>Powered by</span>
-            <img src="/spacio_logo.png" alt="Spacio Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
-            <span className="text-slate-500">Spacio CRM</span>
+            <img src="/spacio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
+            <span className="text-slate-500">SpaceIO CRM</span>
           </div>
         </footer>
       </main>

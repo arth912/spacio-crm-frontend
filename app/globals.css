@@ -268,7 +268,7 @@ select:focus {
 }
 
 .boxes .box > div {
-  --background: #8ebb96; /* Spacio Sage Green */
+  --background: #8ebb96; /* SpaceIO Sage Green */
   --top: auto;
   --right: auto;
   --bottom: auto;
@@ -293,18 +293,18 @@ select:focus {
 }
 
 .boxes .box > div:nth-child(2) {
-  --background: #30573e; /* Spacio Forest Green */
+  --background: #30573e; /* SpaceIO Forest Green */
   --right: 0;
   --rotateY: 90deg;
 }
 
 .boxes .box > div:nth-child(3) {
-  --background: #5d8966; /* Spacio Medium Sage Green */
+  --background: #5d8966; /* SpaceIO Medium Sage Green */
   --rotateX: -90deg;
 }
 
 .boxes .box > div:nth-child(4) {
-  --background: #e5f4e8; /* Spacio Soft Mint Highlight */
+  --background: #e5f4e8; /* SpaceIO Soft Mint Highlight */
   --top: 0;
   --left: 0;
   --translateZ: calc(var(--size) * 3 * -1);

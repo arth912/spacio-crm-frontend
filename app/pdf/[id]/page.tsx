@@ -57,7 +57,7 @@ export default function PDFViewerPage() {
   }
 
   if (!pdfUrl) {
-    return <SpaceLoader loading={true} text="Generating Spacio PDF Document..." />;
+    return <SpaceLoader loading={true} text="Generating SpaceIO PDF Document..." />;
   }
 
   return (
@@ -72,7 +72,7 @@ export default function PDFViewerPage() {
             <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:-translate-x-0.5 transition-transform" />
           </button>
           <div className="flex items-center gap-2">
-            <img src="/spacio_logo.png" alt="Spacio Logo" className="h-6 object-contain" />
+            <img src="/spacio_logo.png" alt="SpaceIO Logo" className="h-6 object-contain" />
             <span className="text-white text-xs font-black tracking-wider uppercase hidden sm:inline-block border-l border-white/10 pl-2">Proposal Viewer</span>
           </div>
         </div>
@@ -89,7 +89,7 @@ export default function PDFViewerPage() {
           <span>Download PDF</span>
         </button>
       </div>
-      <iframe src={pdfUrl} className="w-full flex-1 border-none" title="Spacio Proposal PDF" />
+      <iframe src={pdfUrl} className="w-full flex-1 border-none" title="SpaceIO Proposal PDF" />
     </div>
   );
 }

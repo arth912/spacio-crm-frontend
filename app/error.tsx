@@ -13,7 +13,7 @@ export default function GlobalError({
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    console.error("Spacio CRM Runtime Error Caught:", error);
+    console.error("SpaceIO CRM Runtime Error Caught:", error);
     try {
       const rawUser = localStorage.getItem("decocrm_user");
       if (rawUser) {
@@ -43,7 +43,7 @@ export default function GlobalError({
               </div>
             )}
             <div className="border-l border-slate-200 pl-3">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">{user?.name || "Spacio"}</h1>
+              <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">{user?.name || "SpaceIO"}</h1>
               <p className="text-[10px] text-slate-400 font-bold mt-0.5">CRM ENGINE</p>
             </div>
           </div>
@@ -70,7 +70,7 @@ export default function GlobalError({
           <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-none flex items-center gap-2">
             Something went wrong 🤕
           </h2>
-          <p className="text-xs text-slate-500 font-semibold mt-1">Here's the crash diagnostic and session status report for your Spacio CRM instance.</p>
+          <p className="text-xs text-slate-500 font-semibold mt-1">Here's the crash diagnostic and session status report for your SpaceIO CRM instance.</p>
         </div>
 
         {/* Dashboard Grid Template */}
@@ -145,7 +145,7 @@ export default function GlobalError({
                 Runtime crash safely intercepted
               </h3>
               <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                Spacio CRM caught an unexpected rendering error. The page state was isolated to prevent data corruption. You can safely retry or return to your dashboard.
+                SpaceIO CRM caught an unexpected rendering error. The page state was isolated to prevent data corruption. You can safely retry or return to your dashboard.
               </p>
               
               <div className="flex flex-wrap gap-2.5 pt-2">
@@ -195,8 +195,8 @@ export default function GlobalError({
         <footer className="mt-16 border-t border-slate-200/60 py-6 text-center text-xs text-slate-400 font-bold">
           <div className="flex justify-center items-center gap-2">
             <span>Powered by</span>
-            <img src="/spacio_logo.png" alt="Spacio Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
-            <span className="text-slate-500">Spacio CRM</span>
+            <img src="/spacio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
+            <span className="text-slate-500">SpaceIO CRM</span>
           </div>
         </footer>
 

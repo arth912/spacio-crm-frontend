@@ -113,7 +113,7 @@ export default function SpaceLoader({
         <div className="w-14 h-14 bg-white rounded-xl shadow-md border border-slate-100/90 flex items-center justify-center p-2.5 mb-3 select-none pointer-events-none">
           <img 
             src="/spacio_logo.png" 
-            alt="Spacio Logo" 
+            alt="SpaceIO Logo" 
             className="w-full h-full object-contain" 
           />
         </div>
@@ -121,10 +121,10 @@ export default function SpaceLoader({
         {/* Brand Text Details */}
         <div className="text-center z-10 flex flex-col items-center select-none pointer-events-none">
           <div className="text-base font-black text-slate-800 tracking-[0.25em] uppercase mb-1">
-            SPACIO
+            SPACEIO
           </div>
           <div className="text-[9px] font-extrabold text-slate-400 tracking-widest uppercase mt-2 opacity-85">
-            {text || "Assembling Spacio CRM..."}
+            {text || "Assembling SpaceIO CRM..."}
           </div>
         </div>
       </div>

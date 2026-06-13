@@ -2,7 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Spacio CRM — Premium Interior Design CRM',
+  title: 'SpaceIO CRM — Premium Interior Design CRM',
   description: 'Dynamic quotation engine, project tracking, and billing system for designers & architects.',
   icons: {
     icon: [

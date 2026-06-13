@@ -38,7 +38,7 @@ export default function NotFound() {
               </div>
             )}
             <div className="border-l border-slate-200 pl-3">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">{user?.name || "Spacio"}</h1>
+              <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">{user?.name || "SpaceIO"}</h1>
               <p className="text-[10px] text-slate-400 font-bold mt-0.5">CRM ENGINE</p>
             </div>
           </div>
@@ -191,8 +191,8 @@ export default function NotFound() {
         <footer className="mt-16 border-t border-slate-200/60 py-6 text-center text-xs text-slate-400 font-bold">
           <div className="flex justify-center items-center gap-2">
             <span>Powered by</span>
-            <img src="/spacio_logo.png" alt="Spacio Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
-            <span className="text-slate-500">Spacio CRM</span>
+            <img src="/spacio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
+            <span className="text-slate-500">SpaceIO CRM</span>
           </div>
         </footer>
 
