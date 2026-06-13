@@ -98,7 +98,7 @@ function LoginFormContent() {
         currency: "INR",
         name: "SpaceIO CRM",
         description: `${payInfo.plan === 'monthly' ? 'Monthly' : 'Yearly'} Plan Subscription`,
-        image: "/spacio_logo.png",
+        image: "/spaceio_logo.png",
         order_id: payInfo.razorpay_order_id,
         handler: async function (response: any) {
           setLoading(true);
@@ -254,7 +254,7 @@ function LoginFormContent() {
         currency: data.currency,
         name: "SpaceIO CRM",
         description: `${selectedPlan === 'monthly' ? 'Monthly' : 'Yearly'} Plan Subscription`,
-        image: "/spacio_logo.png",
+        image: "/spaceio_logo.png",
         order_id: data.razorpay_order_id,
         handler: async function (response: any) {
           setLoading(true);
@@ -397,7 +397,7 @@ function LoginFormContent() {
       <div className="sm:mx-auto sm:w-full sm:max-w-2xl">
         <div className="flex justify-center items-center gap-3">
           <img 
-            src="/spacio_logo.png" 
+            src="/spaceio_logo.png" 
             alt="SpaceIO Logo" 
             className="w-10 h-10 object-contain rounded-xl shadow-md"
           />
@@ -1000,7 +1000,7 @@ function LoginFormContent() {
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-slate-400 font-bold flex justify-center items-center gap-1.5 animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <span>Powered by</span>
-          <img src="/spacio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain opacity-60 hover:opacity-100 transition-opacity" />
+          <img src="/spaceio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain opacity-60 hover:opacity-100 transition-opacity" />
           <span className="text-slate-500">SpaceIO CRM</span>
         </div>
       </div>

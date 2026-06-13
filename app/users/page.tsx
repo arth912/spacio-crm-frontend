@@ -714,7 +714,7 @@ export default function UsersManagement() {
         <footer className="mt-12 border-t border-slate-100 py-6 text-center text-xs text-slate-400 font-bold">
           <div className="flex justify-center items-center gap-2">
             <span>Powered by</span>
-            <img src="/spacio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
+            <img src="/spaceio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain inline-block opacity-65 hover:opacity-100 transition-opacity" />
             <span className="text-slate-500">SpaceIO CRM</span>
           </div>
         </footer>

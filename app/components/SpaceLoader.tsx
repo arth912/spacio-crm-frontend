@@ -112,7 +112,7 @@ export default function SpaceLoader({
         {/* Logo Card */}
         <div className="w-14 h-14 bg-white rounded-xl shadow-md border border-slate-100/90 flex items-center justify-center p-2.5 mb-3 select-none pointer-events-none">
           <img 
-            src="/spacio_logo.png" 
+            src="/spaceio_logo.png" 
             alt="SpaceIO Logo" 
             className="w-full h-full object-contain" 
           />
