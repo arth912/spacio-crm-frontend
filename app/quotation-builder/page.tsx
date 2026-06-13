@@ -983,16 +983,16 @@ export default function QuotationBuilder() {
 
     const clientId = selectedClientId !== "new" ? selectedClientId : (isNewProject ? `local_client_${safeTime}` : `local_client_${selectedProjectId}`);
     const projectId = isNewProject ? `local_project_${safeTime}` : selectedProjectId;
-    const resolvedClientName = clientName.trim() || projectOption?.client_name || "New Client";
-    const resolvedProjectName = projectName.trim() || projectOption?.name || "New Interior Design Project";
-    const resolvedSiteAddress = siteAddress.trim() || projectOption?.site_address || "Site Address";
-    const resolvedBudget = Number(projectBudget) || projectOption?.budget || totals.grand_total || 200000;
+    const resolvedClientName = clientName.trim() || projectOption?.client_name || "";
+    const resolvedProjectName = projectName.trim() || projectOption?.name || "";
+    const resolvedSiteAddress = siteAddress.trim() || projectOption?.site_address || "";
+    const resolvedBudget = Number(projectBudget) || projectOption?.budget || totals.grand_total || 0;
 
     const nextClient: LocalClient = {
       id: clientId,
       name: resolvedClientName,
-      phone: clientPhone.trim() || "+91 99999 99999",
-      email: clientEmail.trim() || "client@decocrm.com",
+      phone: clientPhone.trim() || "",
+      email: clientEmail.trim() || "",
       address: resolvedSiteAddress,
     };
 
@@ -1283,10 +1283,10 @@ export default function QuotationBuilder() {
         let finalClientId = selectedClientId;
         if (selectedClientId === "new" || selectedClientId.startsWith("local_client_")) {
           const clientPayload = {
-            name: clientName || "New Client",
-            phone: clientPhone || "+91 99999 99999",
-            email: clientEmail || "client@decocrm.com",
-            address: siteAddress || "Site Address"
+            name: clientName || "",
+            phone: clientPhone || "",
+            email: clientEmail || "",
+            address: siteAddress || ""
           };
           const clientRes = await fetch(`${API_BASE_URL}/clients`, {
             method: 'POST',
@@ -1305,9 +1305,9 @@ export default function QuotationBuilder() {
         // B. Create Project
         const projectPayload = {
           client_id: finalClientId,
-          name: projectName || "New Interior Design Project",
-          site_address: siteAddress || "Site Address",
-          budget: Number(projectBudget) || 200000,
+          name: projectName || "",
+          site_address: siteAddress || "",
+          budget: Number(projectBudget) || 0,
           status: "Draft"
         };
         const projectRes = await fetch(`${API_BASE_URL}/projects`, {

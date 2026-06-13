@@ -23,7 +23,8 @@ import {
   Lock,
   Upload,
   Save,
-  Users
+  Users,
+  Pencil
 } from 'lucide-react';
 import SpaceLoader from '../../components/SpaceLoader';
 
@@ -269,6 +270,112 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
   const [transactionId, setTransactionId] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Contact Info editing states
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [isSavingContact, setIsSavingContact] = useState(false);
+  const [editBudget, setEditBudget] = useState('');
+
+  const handleSaveContactDetails = async () => {
+    if (!client) return;
+    setIsSavingContact(true);
+    try {
+      const parsedBudget = parseFloat(editBudget) || 0;
+
+      // 1. Call Backend PUT /clients/{id}
+      let updatedClientData = { ...client };
+      if (!client.id.startsWith("local_client_")) {
+        const res = await fetch(`${API_BASE_URL}/clients/${client.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({
+            phone: editPhone,
+            email: editEmail,
+            address: editAddress
+          })
+        });
+        if (res.ok) {
+          updatedClientData = await res.json();
+        }
+      } else {
+        // Local client update
+        updatedClientData = {
+          ...client,
+          phone: editPhone,
+          email: editEmail,
+          address: editAddress
+        };
+      }
+
+      // 2. Call Backend PUT /projects/{id} if a project exists to update site_address and budget
+      let updatedProjectData = project ? { ...project } : null;
+      if (project) {
+        if (!project.id.startsWith("local_project_")) {
+          const res = await fetch(`${API_BASE_URL}/projects/${project.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              ...getAuthHeaders()
+            },
+            body: JSON.stringify({
+              client_id: project.client_id,
+              name: project.name,
+              site_address: editAddress,
+              budget: parsedBudget,
+              status: project.status
+            })
+          });
+          if (res.ok) {
+            updatedProjectData = await res.json();
+          }
+        } else {
+          updatedProjectData = {
+            ...project,
+            site_address: editAddress,
+            budget: parsedBudget
+          };
+        }
+      }
+
+      // Update local storage
+      const localData = readLocalDashboardData();
+      const updatedClients = localData.clients.map(c => {
+        if (c.id === client.id) {
+          return { ...c, phone: editPhone, email: editEmail, address: editAddress };
+        }
+        return c;
+      });
+      const updatedProjects = project ? localData.projects.map(p => {
+        if (p.id === project.id) {
+          return { ...p, site_address: editAddress, budget: parsedBudget };
+        }
+        return p;
+      }) : localData.projects;
+
+      window.localStorage.setItem(LOCAL_DASHBOARD_DATA_KEY, JSON.stringify({
+        ...localData,
+        clients: updatedClients,
+        projects: updatedProjects
+      }));
+
+      // Update state
+      setClient(updatedClientData);
+      if (updatedProjectData) {
+        setProject(updatedProjectData);
+      }
+      setIsEditingContact(false);
+    } catch (err) {
+      console.error("Failed to update contact details:", err);
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
 
   const handleDownloadPDF = async (e: React.MouseEvent, quoteId: string, projectName: string) => {
     e.preventDefault();
@@ -703,10 +810,10 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
 
   // Safe client wrapper to prevent page crashing while loading
   const displayClient = client || {
-    name: "Loading Client Profile...",
-    phone: "Loading...",
-    email: "Loading...",
-    address: "Loading site address..."
+    name: "",
+    phone: "",
+    email: "",
+    address: ""
   };
 
   return (
@@ -834,33 +941,99 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
               </div>
               <h2 className="text-2xl font-black text-slate-800 mt-2">{displayClient.name}</h2>
               <p className="text-sm font-bold text-slate-500 mt-1">
-                Project: <span className="text-slate-800 font-extrabold">{project ? project.name : 'N/A'}</span>
+                Project: <span className="text-slate-800 font-extrabold">{project ? project.name : ''}</span>
               </p>
             </div>
 
             {/* Budget Metric */}
-            {/* Budget Metric */}
             <div className="p-4 bg-stone-900 text-white rounded-2xl shadow-md min-w-[220px] border border-stone-800">
               <span className="text-[10px] uppercase font-bold text-amber-500 tracking-widest block">Project Budget</span>
-              <div className="flex items-baseline gap-1 mt-1">
-                <IndianRupee className="w-5 h-5 text-amber-500" />
-                <span className="text-2xl font-black">{project ? project.budget.toLocaleString('en-IN') : '0'}</span>
-              </div>
+              {isEditingContact ? (
+                <div className="flex items-center gap-1 mt-1.5 bg-stone-800 rounded-xl px-2 py-1 border border-stone-700">
+                  <IndianRupee className="w-4 h-4 text-amber-500 shrink-0" />
+                  <input
+                    type="number"
+                    value={editBudget}
+                    onChange={(e) => setEditBudget(e.target.value)}
+                    className="bg-transparent text-white text-lg font-black outline-none w-full"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-1 mt-1">
+                  <IndianRupee className="w-5 h-5 text-amber-500" />
+                  <span className="text-2xl font-black">{project ? project.budget.toLocaleString('en-IN') : '0'}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Content: Contacts Grid */}
           <div className="mt-6">
-            <h4 className="text-xs uppercase font-extrabold text-slate-400 tracking-wider mb-4">Contact & Site Info</h4>
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-xs uppercase font-extrabold text-slate-400 tracking-wider">Contact & Site Info</h4>
+              {isEditingContact ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSaveContactDetails}
+                    disabled={isSavingContact}
+                    className="flex items-center gap-1 text-[11px] font-extrabold bg-stone-900 hover:bg-stone-850 text-white px-3 py-1.5 rounded-lg transition-all shadow-sm"
+                  >
+                    {isSavingContact ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Check className="w-3 h-3" />
+                    )}
+                    <span>Save</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditingContact(false);
+                      setEditPhone(displayClient.phone || "");
+                      setEditEmail(displayClient.email || "");
+                      setEditAddress((project ? project.site_address : displayClient.address) || "");
+                      setEditBudget(project ? String(project.budget || 0) : '0');
+                    }}
+                    disabled={isSavingContact}
+                    className="flex items-center gap-1 text-[11px] font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition-all"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setIsEditingContact(true);
+                    setEditPhone(displayClient.phone || "");
+                    setEditEmail(displayClient.email || "");
+                    setEditAddress((project ? project.site_address : displayClient.address) || "");
+                    setEditBudget(project ? String(project.budget || 0) : '0');
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-extrabold text-amber-600 hover:text-amber-700 px-2.5 py-1 rounded-lg border border-amber-100 hover:bg-amber-50/50 transition-all shadow-sm"
+                >
+                  <Pencil className="w-3 h-3" />
+                  <span>Edit Contact</span>
+                </button>
+              )}
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex items-center gap-3 text-xs bg-white/50 p-4 rounded-2xl border border-slate-100">
                 <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
                   <Phone className="w-4 h-4" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <span className="text-slate-400 block text-[10px]">Phone</span>
-                  <span className="text-slate-700 font-bold">{displayClient.phone}</span>
+                  {isEditingContact ? (
+                    <input
+                      type="tel"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-200 outline-none transition-all mt-0.5"
+                    />
+                  ) : (
+                    <span className="text-slate-700 font-bold">{displayClient.phone}</span>
+                  )}
                 </div>
               </div>
 
@@ -868,9 +1041,18 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
                   <Mail className="w-4 h-4" />
                 </div>
-                <div className="min-w-0">
+                <div className="flex-1 min-w-0">
                   <span className="text-slate-400 block text-[10px]">Email</span>
-                  <span className="text-slate-700 font-bold block truncate">{displayClient.email}</span>
+                  {isEditingContact ? (
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-200 outline-none transition-all mt-0.5"
+                    />
+                  ) : (
+                    <span className="text-slate-700 font-bold block truncate">{displayClient.email}</span>
+                  )}
                 </div>
               </div>
 
@@ -878,9 +1060,18 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 <div className="p-2 bg-slate-100 rounded-lg text-slate-500 mt-0.5">
                   <MapPin className="w-4 h-4" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <span className="text-slate-400 block text-[10px]">Site Address</span>
-                  <span className="text-slate-700 font-bold leading-normal block">{project ? project.site_address : displayClient.address}</span>
+                  {isEditingContact ? (
+                    <textarea
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
+                      rows={1}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-200 outline-none transition-all mt-0.5 resize-none"
+                    />
+                  ) : (
+                    <span className="text-slate-700 font-bold leading-normal block">{project ? project.site_address : displayClient.address}</span>
+                  )}
                 </div>
               </div>
             </div>

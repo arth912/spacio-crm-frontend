@@ -1,7 +1,7 @@
 {
   "name": "decocrm-frontend",
-  "version": "1.0.1",
-  "versioncomment": "add dimension-aware quotation pricing and UI updates",
+  "version": "1.0.2",
+  "versioncomment": "Implemented Forgot Password and email verification.",
   "private": true,
   "scripts": {
     "dev": "next dev",
