@@ -821,7 +821,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
       <SpaceLoader loading={loading} text="Loading Client Profile..." />
       
       {/* NAV BAR */}
-      <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-6 py-4 md:px-10">
+      <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-4 py-4 md:px-10">
         <div className="flex justify-between items-center max-w-6xl mx-auto">
           <div className="flex items-center gap-3">
             {user?.company_logo ? (
@@ -841,9 +841,9 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
             </div>
           </div>
           <div className="flex gap-3 items-center">
-            <a href="/dashboard" className="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-50 text-slate-700 font-extrabold px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-colors">
+            <a href="/dashboard" className="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-50 text-slate-700 font-extrabold px-2.5 py-1.5 sm:px-3 rounded-xl border border-slate-200 shadow-sm transition-colors">
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Dashboard</span>
+              <span className="hidden sm:inline">Dashboard</span>
             </a>
             
             <div className="relative" ref={profileMenuRef}>
@@ -910,7 +910,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="max-w-6xl mx-auto px-4 py-10">
         
         {/* Profile Card */}
         <div className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">

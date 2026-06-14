@@ -1,7 +1,7 @@
 {
   "name": "decocrm-frontend",
-  "version": "1.0.3",
-  "versioncomment": "Change spacio to SPACEIO. Update client and project creation to use actual form values instead of placeholders.",
+  "version": "1.0.4",
+  "versioncomment": "Mobile View layout bug fix.",
   "private": true,
   "scripts": {
     "dev": "next dev",

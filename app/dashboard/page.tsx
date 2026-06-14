@@ -24,7 +24,8 @@ import {
   Lock,
   Upload,
   Save,
-  Users
+  Users,
+  Loader2
 } from 'lucide-react';
 import SpaceLoader from '../components/SpaceLoader';
 import { 
@@ -701,7 +702,7 @@ export default function Dashboard() {
       <SpaceLoader loading={!hasLoaded} text="Loading dashboard data..." />
       
       {/* TOP NAV BAR */}
-      <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-6 py-4 md:px-10">
+      <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-4 py-4 md:px-10">
         <div className="flex justify-between items-center max-w-7xl mx-auto">
           <div className="flex items-center gap-3">
             {user?.company_logo ? (
@@ -723,10 +724,10 @@ export default function Dashboard() {
           <div className="flex gap-3 items-center">
             <a 
               href="/quotation-builder" 
-              className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white font-bold px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm"
+              className="flex items-center gap-2 bg-stone-900 hover:bg-stone-850 text-white font-bold px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-205 text-xs sm:text-sm"
             >
               <Plus className="w-4 h-4" />
-              New Quotation
+              <span className="hidden sm:inline">New Quotation</span>
             </a>
             
             <div className="relative" ref={profileMenuRef}>
@@ -793,7 +794,7 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 md:px-10 py-8">
+      <main className="max-w-7xl mx-auto px-4 md:px-10 py-8">
 
         {/* GREETING */}
         <div className="mb-8 animate-fade-in">
@@ -1105,7 +1106,8 @@ export default function Dashboard() {
           </div>
 
           <div className="glass-panel rounded-2xl p-6 shadow-card border border-slate-200/50 bg-white">
-            <div className="overflow-x-auto -mx-2">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto -mx-2">
               <table className="w-full text-left border-collapse min-w-[700px]">
                 <thead>
                   <tr className="border-b border-slate-100">
@@ -1209,6 +1211,88 @@ export default function Dashboard() {
               </table>
             </div>
 
+            {/* Mobile Card List View */}
+            <div className="md:hidden space-y-4">
+              {displayedClients.map((client, idx) => {
+                const clientProj = projects.find(p => p.client_id === client.id);
+                const initials = client.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                const colors = [
+                  'bg-amber-100 text-amber-800',
+                  'bg-emerald-100 text-emerald-700',
+                  'bg-pink-100 text-pink-700',
+                  'bg-amber-100 text-amber-700'
+                ];
+                const avatarStyle = colors[idx % colors.length];
+
+                return (
+                  <div key={client.id} className="border border-slate-100 rounded-2xl p-4 bg-slate-50/30 hover:bg-amber-50/10 transition-colors flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-full ${avatarStyle} flex items-center justify-center font-extrabold text-xs shrink-0`}>
+                          {initials}
+                        </div>
+                        <h4 className="font-bold text-slate-800 text-sm">{client.name}</h4>
+                      </div>
+                      {clientProj && (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${getStatusColor(clientProj.status)}`}>
+                          {clientProj.status}
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1.5 text-xs text-slate-600">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Project:</span>
+                        <span className="font-bold text-slate-700 truncate max-w-[180px]">{clientProj ? clientProj.name : 'No active project'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Budget:</span>
+                        <span className="font-extrabold text-slate-800">₹{clientProj ? clientProj.budget.toLocaleString('en-IN') : '0'}</span>
+                      </div>
+                      <div className="flex justify-between pt-1">
+                        <span className="text-slate-400 font-medium">Contact:</span>
+                        <div className="flex flex-col items-end gap-1">
+                          {client.phone ? (
+                            <a href={`tel:${client.phone}`} className="text-[11px] font-bold text-slate-600 hover:text-amber-750 flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              <span>{client.phone}</span>
+                            </a>
+                          ) : (
+                            <span className="text-[10px] text-slate-300 italic">No phone</span>
+                          )}
+                          {client.email ? (
+                            <a href={`mailto:${client.email}`} className="text-[11px] font-semibold text-slate-500 hover:text-amber-750 truncate max-w-[150px] flex items-center gap-1">
+                              <Mail className="w-3 h-3 text-slate-400" />
+                              <span>{client.email}</span>
+                            </a>
+                          ) : (
+                            <span className="text-[10px] text-slate-300 italic">No email</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="pt-1.5 border-t border-slate-100/60 mt-1">
+                      <a 
+                        href={`/clients/${client.id}`}
+                        className="w-full flex items-center justify-center bg-stone-900 hover:bg-stone-850 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow-sm"
+                      >
+                        Open Profile
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+              {displayedClients.length === 0 && !loading && (
+                <div className="text-center py-6 text-slate-400 font-medium text-xs">
+                  No clients registered yet.
+                </div>
+              )}
+              {loading && (
+                <div className="flex justify-center py-6">
+                  <SpaceLoader fullPage={false} size="sm" />
+                </div>
+              )}
+            </div>
+
             {showAllClients && totalClientPages > 1 && (
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-5 pt-4 border-t border-slate-100 text-xs text-slate-500 font-bold">
                 <div>
@@ -1267,7 +1351,8 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="overflow-x-auto -mx-2">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto -mx-2">
               <table className="w-full text-left border-collapse min-w-[600px]">
                 <thead>
                   <tr className="border-b border-slate-100">
@@ -1325,6 +1410,63 @@ export default function Dashboard() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile Card List View */}
+            <div className="md:hidden space-y-4">
+              {displayedQuotes.map((q) => {
+                return (
+                  <div key={q.id} className="border border-slate-100 rounded-2xl p-4 bg-slate-50/30 hover:bg-amber-50/10 transition-colors flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-800 text-sm truncate max-w-[180px]">{q.project_name}</h4>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${getStatusColor(q.status)}`}>
+                        {q.status}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 text-xs text-slate-600">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Client:</span>
+                        <span className="font-bold text-slate-700">{q.client_name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Estimate ID:</span>
+                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase">
+                          EST-{q.id.substring(0, 8)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-baseline pt-1">
+                        <span className="text-slate-400 font-medium">Amount:</span>
+                        <span className="font-extrabold text-slate-800">₹{q.grand_total.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1 border-t border-slate-100/60 mt-1">
+                      <button 
+                        onClick={(e) => handleDownloadPDF(e, q.id, q.project_name)}
+                        disabled={downloadingId === q.id}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 font-extrabold py-2.5 px-3 rounded-xl text-xs border border-slate-200 shadow-sm transition-all"
+                      >
+                        {downloadingId === q.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5 text-slate-500" />
+                        )}
+                        <span>Download PDF</span>
+                      </button>
+                      <a 
+                        href={`/quotation-builder?edit=${q.id}`}
+                        className="flex-1 flex items-center justify-center bg-stone-900 hover:bg-stone-850 text-white font-extrabold py-2.5 px-3 rounded-xl text-xs shadow-sm text-center"
+                      >
+                        Edit
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+              {displayedQuotes.length === 0 && !loading && (
+                <div className="text-center py-6 text-slate-400 font-medium text-xs">
+                  No quotations found.
+                </div>
+              )}
             </div>
             {recentQuotes.length > 5 && (
               <div className="flex justify-center mt-4 pt-4 border-t border-slate-100">

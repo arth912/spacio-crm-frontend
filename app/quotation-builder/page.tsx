@@ -463,6 +463,8 @@ export default function QuotationBuilder() {
   const [terms, setTerms] = useState("");
 
   const [categories, setCategories] = useState<{ id: string, name: string }[]>([]);
+  const [mobileSubView, setMobileSubView] = useState<'items' | 'catalog'>('items');
+
 
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [showNewItemForm, setShowNewItemForm] = useState(false);
@@ -1116,6 +1118,7 @@ export default function QuotationBuilder() {
       remark: ""
     };
     setSelectedItems([...selectedItems, newItem]);
+    setMobileSubView('items');
   };
 
   const handleCreateCatalogItem = async (e: React.FormEvent) => {
@@ -1477,7 +1480,7 @@ export default function QuotationBuilder() {
       <SpaceLoader loading={loading && rooms.length === 0} text="Loading quotation details..." />
       
       {/* NAV BAR */}
-      <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-6 py-4 md:px-10">
+      <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-4 py-4 md:px-10">
         <div className="flex justify-between items-center max-w-7xl mx-auto">
           <div className="flex items-center gap-3">
             {user?.company_logo ? (
@@ -1499,10 +1502,10 @@ export default function QuotationBuilder() {
           <div className="flex items-center gap-3">
             <a 
               href="/dashboard" 
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-stone-900 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200/60 shadow-sm transition-all group focus:outline-none"
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-stone-900 px-2.5 py-1.5 sm:px-3 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200/60 shadow-sm transition-all group focus:outline-none"
             >
               <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              <span>Back to Dashboard</span>
+              <span>Back<span className="hidden sm:inline"> to Dashboard</span></span>
             </a>
             
             <div className="relative" ref={profileMenuRef}>
@@ -1569,7 +1572,7 @@ export default function QuotationBuilder() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 md:px-10 py-8">
+      <main className="max-w-7xl mx-auto px-4 md:px-10 py-8">
 
         {/* COMPACT STICKY CONTROL BAR WITH INTEGRATED TIMELINE */}
         <div className="mb-8 max-w-2xl mx-auto bg-white/80 backdrop-blur-md border border-slate-200/60 p-2.5 rounded-full shadow-sm flex items-center justify-between gap-4 animate-fade-in">
@@ -1640,7 +1643,7 @@ export default function QuotationBuilder() {
                     } ${s.num === step ? 'ring-2 ring-amber-500/20' : ''}`}>
                       {s.icon}
                     </div>
-                    <span className={`text-[9px] font-extrabold uppercase tracking-wider mt-1 transition-colors ${
+                    <span className={`text-[9px] font-extrabold uppercase tracking-wider mt-1 transition-colors hidden sm:block ${
                       s.num <= step ? 'text-amber-700 font-black' : 'text-slate-400'
                     }`}>{s.label}</span>
                   </div>
@@ -1893,7 +1896,7 @@ export default function QuotationBuilder() {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
 
               {/* ===== MAIN AREA: ROOM CARDS ===== */}
-              <div className="xl:col-span-8 xl:order-1">
+              <div className="xl:col-span-8 order-2 xl:order-1">
                 <div className="border border-slate-100 rounded-2xl bg-white/50 p-6 min-h-[400px]">
                   {rooms.length === 0 ? (
                     <div className="text-center py-20 animate-fade-in">
@@ -1951,8 +1954,8 @@ export default function QuotationBuilder() {
               </div>
 
               {/* ===== RIGHT SIDEBAR: ROOM ADD ===== */}
-              <div className="xl:col-span-4 xl:order-2">
-                <div className="glass-panel border border-slate-200/60 rounded-2xl p-5 sticky top-24">
+              <div className="xl:col-span-4 order-1 xl:order-2">
+                <div className="glass-panel border border-slate-200/60 rounded-2xl p-5 xl:sticky xl:top-24">
                   <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2 mb-3">
                     <PlusCircle className="w-4 h-4 text-amber-600" />
                     Add Spaces
@@ -2063,10 +2066,37 @@ export default function QuotationBuilder() {
               <p className="text-slate-500 text-sm mt-1">Select a room tab on the left, then browse the Master Catalog in the sidebar to add and customize items.</p>
             </div>
 
+            {/* Mobile View Toggle */}
+            <div className="flex xl:hidden mb-5 p-1 bg-slate-100/80 rounded-xl w-full border border-slate-200/40">
+              <button 
+                type="button"
+                onClick={() => setMobileSubView('items')}
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  mobileSubView === 'items' 
+                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200/10' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Configured Items ({activeRoomItems.length})
+              </button>
+              <button 
+                type="button"
+                onClick={() => setMobileSubView('catalog')}
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  mobileSubView === 'catalog' 
+                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200/10' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Browse Master Catalog
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 xl:grid-cols-10 gap-6">
 
               {/* ===== MAIN AREA: SELECTED ITEMS ===== */}
-              <div className="xl:col-span-7 xl:order-1">
+              <div className={`xl:col-span-7 xl:order-1 ${mobileSubView === 'items' ? 'block' : 'hidden xl:block'}`}>
+
                 {/* Room tabs */}
                 {rooms.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-4 p-1.5 bg-slate-100/60 rounded-xl w-fit">
@@ -2175,7 +2205,7 @@ export default function QuotationBuilder() {
                               {/* Bottom row: All editable fields in a clean grid */}
                               <div className="px-5 pb-4 pt-2 bg-slate-50/60 border-t border-slate-100/80 space-y-3">
                                 {item.pricing_type === 'sq_ft' && (
-                                  <div className="grid grid-cols-4 gap-3 bg-amber-50/40 p-2.5 rounded-lg border border-amber-100/60 mb-2">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-amber-50/40 p-2.5 rounded-lg border border-amber-100/60 mb-2">
                                     <div>
                                       <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Length (L) ft</label>
                                       <input 
@@ -2236,7 +2266,7 @@ export default function QuotationBuilder() {
                                   </div>
                                 )}
 
-                                <div className="grid grid-cols-5 gap-3">
+                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                                   {/* Base Rate */}
                                   <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Base ₹</label>
@@ -2334,8 +2364,9 @@ export default function QuotationBuilder() {
               </div>
 
               {/* ===== RIGHT SIDEBAR: MASTER CATALOG ===== */}
-              <div className="xl:col-span-3 xl:order-2">
-                <div className="glass-panel border border-amber-200/40 rounded-2xl p-4 flex flex-col sticky top-24" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+              <div className={`xl:col-span-3 xl:order-2 ${mobileSubView === 'catalog' ? 'block' : 'hidden xl:block'}`}>
+                <div className="glass-panel border border-amber-200/40 rounded-2xl p-4 flex flex-col xl:sticky xl:top-24 xl:max-h-[calc(100vh-160px)] max-h-none">
+
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <h3 className="font-extrabold text-slate-800 text-sm">Master Catalog</h3>
