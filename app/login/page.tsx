@@ -73,12 +73,57 @@ function LoginFormContent() {
   };
 
   useEffect(() => {
-    // If already logged in, redirect directly
+    // If already logged in, check if access has expired
     const token = localStorage.getItem("decocrm_auth_token");
+    const rawUser = localStorage.getItem("decocrm_user");
     if (token) {
+      if (rawUser) {
+        try {
+          const u = JSON.parse(rawUser);
+          if (u.access_end && new Date(u.access_end) < new Date() && u.role !== 'Admin') {
+            localStorage.removeItem("decocrm_auth_token");
+            localStorage.removeItem("decocrm_user");
+            setErrorMsg("Your account access has expired. Please sign in below to select a plan and renew your subscription.");
+            return;
+          }
+        } catch (e) {}
+      }
       router.push(redirectPath);
     }
   }, [router, redirectPath]);
+
+  const handleChangePlan = async (newPlan: 'monthly' | 'yearly') => {
+    if (!unpaidPaymentInfo) return;
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/create-subscription-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: unpaidPaymentInfo.user_id,
+          selected_plan: newPlan
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUnpaidPaymentInfo((prev: any) => ({
+          ...prev,
+          ...data,
+          plan: newPlan,
+          amount: data.amount,
+          razorpay_order_id: data.razorpay_order_id
+        }));
+      } else {
+        setErrorMsg(data.detail || "Failed to update plan selection.");
+      }
+    } catch (err) {
+      console.error("Plan switch error:", err);
+      setErrorMsg("Connection error while updating plan selection.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleResumePayment = async (payInfo: any) => {
     setLoading(true);
@@ -110,19 +155,21 @@ function LoginFormContent() {
                 user_id: payInfo.user_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature
+                razorpay_signature: response.razorpay_signature,
+                selected_plan: payInfo.plan
               })
             });
             
             const verifyData = await verifyRes.json();
             if (verifyRes.ok) {
-              localStorage.setItem("decocrm_auth_token", verifyData.access_token);
-              localStorage.setItem("decocrm_user", JSON.stringify(verifyData.user));
-              setSuccessMsg("Payment verified! Account activated successfully. Redirecting...");
+              // Reset auth state & redirect to login view
+              localStorage.removeItem("decocrm_auth_token");
+              localStorage.removeItem("decocrm_user");
               setUnpaidPaymentInfo(null);
-              setTimeout(() => {
-                router.push(redirectPath);
-              }, 1200);
+              setAuthView('auth');
+              setActiveTab('login');
+              setSuccessMsg("🎉 Payment verified & plan activated! Confirmation email with plan details has been sent. Please log in to continue.");
+              router.push('/login');
             } else {
               setErrorMsg(verifyData.detail || "Payment verification failed. Please contact support.");
             }
@@ -139,11 +186,11 @@ function LoginFormContent() {
           contact: payInfo.phone
         },
         theme: {
-          color: "#1c1917"
+          color: "#ea580c"
         },
         modal: {
           ondismiss: function() {
-            setErrorMsg("Subscription payment was not completed.");
+            setErrorMsg("Subscription payment was cancelled.");
             setLoading(false);
           }
         }
@@ -181,9 +228,13 @@ function LoginFormContent() {
             router.push(redirectPath);
           }, 1000);
         } else {
-          if (res.status === 402 && data.detail && data.detail.error === "payment_pending") {
+          if (res.status === 402 && data.detail && (data.detail.error === "payment_pending" || data.detail.error === "access_expired")) {
             setUnpaidPaymentInfo(data.detail);
-            setErrorMsg("Payment pending! Please complete your subscription payment to activate your account.");
+            if (data.detail.error === "access_expired") {
+              setErrorMsg("Your account access has expired! Please select a plan (Monthly or Yearly) below to complete payment and renew access.");
+            } else {
+              setErrorMsg("Payment pending! Please complete your subscription payment to activate your account.");
+            }
           } else if (res.status === 403 && data.detail === "email_unverified") {
             setErrorMsg("Your email address is unverified. Please complete verification.");
             setAuthView('verify_email');
@@ -425,13 +476,19 @@ function LoginFormContent() {
             </div>
           )}
 
-          {/* VIEW: UNPAID RESUME PAYMENT */}
+          {/* VIEW: UNPAID RESUME PAYMENT & EXPIRED ACCESS PLAN SELECTION */}
           {unpaidPaymentInfo && authView === 'auth' ? (
             <div className="space-y-6 animate-fade-in">
               <div className="text-center">
                 <span className="text-3xl">💳</span>
-                <h3 className="text-lg font-black text-slate-900 mt-2">Subscription Payment Pending</h3>
-                <p className="text-xs text-slate-500 font-semibold mt-1">Complete your registration payment to activate your SpaceIO CRM account.</p>
+                <h3 className="text-lg font-black text-slate-900 mt-2">
+                  {unpaidPaymentInfo.error === 'access_expired' ? 'Account Access Expired' : 'Subscription Payment Pending'}
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-1">
+                  {unpaidPaymentInfo.error === 'access_expired' 
+                    ? 'Select a plan (Monthly or Yearly) and complete payment to restore full access to your account.'
+                    : 'Complete your subscription payment to activate your SpaceIO CRM account.'}
+                </p>
               </div>
 
               <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-5 space-y-4">
@@ -443,13 +500,57 @@ function LoginFormContent() {
                   <span className="text-slate-400">Email Address:</span>
                   <span className="text-slate-800">{unpaidPaymentInfo.email}</span>
                 </div>
-                <div className="flex justify-between items-center text-xs font-bold">
-                  <span className="text-slate-400">Selected Plan:</span>
-                  <span className="text-slate-850 uppercase bg-stone-100 px-2 py-0.5 rounded text-[10px] tracking-wider">{unpaidPaymentInfo.plan}</span>
+
+                {/* PLAN SELECTION TOGGLE */}
+                <div className="pt-1">
+                  <span className="text-xs font-bold text-slate-600 block mb-2">Choose Plan Duration:</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleChangePlan('monthly')}
+                      disabled={loading}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        unpaidPaymentInfo.plan === 'monthly'
+                          ? 'border-orange-500 bg-orange-50/60 ring-2 ring-orange-500/20 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black text-slate-900">Monthly</span>
+                        {unpaidPaymentInfo.plan === 'monthly' && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0"></span>
+                        )}
+                      </div>
+                      <div className="text-sm font-bold text-orange-600 mt-1">₹499 <span className="text-[10px] text-slate-400 font-normal">/ mo</span></div>
+                      <span className="text-[10px] text-slate-500 font-medium block mt-0.5">30 days access</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleChangePlan('yearly')}
+                      disabled={loading}
+                      className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden ${
+                        unpaidPaymentInfo.plan === 'yearly'
+                          ? 'border-orange-500 bg-orange-50/60 ring-2 ring-orange-500/20 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="absolute -right-6 top-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] font-black px-6 py-0.5 rotate-45 shadow-xs">SAVE 16%</div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black text-slate-900">Yearly</span>
+                        {unpaidPaymentInfo.plan === 'yearly' && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0"></span>
+                        )}
+                      </div>
+                      <div className="text-sm font-bold text-orange-600 mt-1">₹4,999 <span className="text-[10px] text-slate-400 font-normal">/ yr</span></div>
+                      <span className="text-[10px] text-slate-500 font-medium block mt-0.5">365 days access</span>
+                    </button>
+                  </div>
                 </div>
+
                 <div className="border-t border-slate-200/60 pt-3 flex justify-between items-center text-sm font-black">
-                  <span className="text-slate-800">Amount Due:</span>
-                  <span className="text-slate-900">₹{(unpaidPaymentInfo.amount / 100).toLocaleString('en-IN')}</span>
+                  <span className="text-slate-800">Total Amount Due:</span>
+                  <span className="text-orange-600 text-base">₹{(unpaidPaymentInfo.amount / 100).toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
@@ -458,13 +559,13 @@ function LoginFormContent() {
                   type="button"
                   onClick={() => handleResumePayment(unpaidPaymentInfo)}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-955 text-white font-bold py-3 px-4 rounded-xl text-sm shadow-md transition-all disabled:opacity-60"
+                  className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-md shadow-orange-600/20 transition-all disabled:opacity-60"
                 >
                   {loading ? (
                     <SpaceLoader fullPage={false} size="sm" />
                   ) : (
                     <>
-                      <span>Pay & Activate Account</span>
+                      <span>Pay ₹{(unpaidPaymentInfo.amount / 100).toLocaleString('en-IN')} & Activate Plan</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}

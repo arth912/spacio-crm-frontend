@@ -278,15 +278,22 @@ export default function QuotationBuilder() {
     if (!token) {
       router.push("/login?redirect=/quotation-builder");
     } else {
-      setIsAuthenticated(true);
       const rawUser = localStorage.getItem("decocrm_user");
       if (rawUser) {
         try {
-          setUser(JSON.parse(rawUser));
+          const parsed = JSON.parse(rawUser);
+          if (parsed.access_end && new Date(parsed.access_end) < new Date() && parsed.role !== 'Admin') {
+            localStorage.removeItem("decocrm_auth_token");
+            localStorage.removeItem("decocrm_user");
+            router.push("/login?access_expired=true");
+            return;
+          }
+          setUser(parsed);
         } catch (e) {
           console.error("Failed to parse decocrm_user", e);
         }
       }
+      setIsAuthenticated(true);
     }
   }, [router]);
 
