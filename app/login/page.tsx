@@ -21,7 +21,12 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/a
 function LoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectPath = searchParams.get('redirect') || '/dashboard';
+  const rawRedirect = searchParams.get('redirect');
+  const redirectPath =
+    rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') && !rawRedirect.startsWith('/login')
+      ? rawRedirect
+      : '/dashboard';
+  const logoutReason = searchParams.get('reason');
 
   // State Views: 'auth' (Sign In / Signup Tabs), 'verify_email', 'forgot_request', 'forgot_confirm'
   const [authView, setAuthView] = useState<'auth' | 'verify_email' | 'forgot_request' | 'forgot_confirm'>('auth');
@@ -46,6 +51,11 @@ function LoginFormContent() {
   const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
+  useEffect(() => {
+    if (logoutReason === 'idle') setErrorMsg("You were signed out after a period of inactivity. Please sign in again.");
+    else if (logoutReason === 'expired') setErrorMsg("Your session has ended (it expired or you signed in on another device). Please sign in again.");
+  }, [logoutReason]);
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -88,7 +98,7 @@ function LoginFormContent() {
           }
         } catch (e) {}
       }
-      router.push(redirectPath);
+      router.replace(redirectPath);
     }
   }, [router, redirectPath]);
 
@@ -221,12 +231,20 @@ function LoginFormContent() {
 
         const data = await res.json();
         if (res.ok) {
+          // Login returns only the token; load the profile from the user API.
+          const meRes = await fetch(`${API_BASE_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${data.access_token}` }
+          });
+          if (!meRes.ok) {
+            setErrorMsg("Signed in, but could not load your profile. Please try again.");
+            return;
+          }
+          const me = await meRes.json();
           localStorage.setItem("decocrm_auth_token", data.access_token);
-          localStorage.setItem("decocrm_user", JSON.stringify(data.user));
+          localStorage.setItem("decocrm_user", JSON.stringify(me));
+          localStorage.setItem("decocrm_last_active", String(Date.now()));
           setSuccessMsg("Logged in successfully! Redirecting...");
-          setTimeout(() => {
-            router.push(redirectPath);
-          }, 1000);
+          router.replace(redirectPath);
         } else {
           if (res.status === 402 && data.detail && (data.detail.error === "payment_pending" || data.detail.error === "access_expired")) {
             setUnpaidPaymentInfo(data.detail);
@@ -339,9 +357,7 @@ function LoginFormContent() {
               setLogo("");
               setOtpCode("");
               setAuthView('auth');
-              setTimeout(() => {
-                router.push(redirectPath);
-              }, 1200);
+              router.replace(redirectPath);
             } else {
               setErrorMsg(verifyData.detail || "Payment verification failed. Please contact support.");
             }
@@ -459,18 +475,18 @@ function LoginFormContent() {
         </div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-2xl animate-fade-in">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-2xl">
         <div className="bg-white/80 backdrop-blur-md py-8 px-4 shadow-card border border-slate-200/50 sm:rounded-2xl sm:px-10">
           
           {errorMsg && (
-            <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 text-xs font-bold animate-fade-in flex items-start gap-2">
+            <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 text-xs font-bold flex items-start gap-2">
               <span className="shrink-0 text-[14px]">⚠️</span>
               <span>{errorMsg}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3.5 text-xs font-bold animate-fade-in flex items-start gap-2">
+            <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3.5 text-xs font-bold flex items-start gap-2">
               <span className="shrink-0 text-[14px]">✨</span>
               <span>{successMsg}</span>
             </div>
@@ -478,7 +494,7 @@ function LoginFormContent() {
 
           {/* VIEW: UNPAID RESUME PAYMENT & EXPIRED ACCESS PLAN SELECTION */}
           {unpaidPaymentInfo && authView === 'auth' ? (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6">
               <div className="text-center">
                 <span className="text-3xl">💳</span>
                 <h3 className="text-lg font-black text-slate-900 mt-2">
@@ -586,7 +602,7 @@ function LoginFormContent() {
             </div>
           ) : authView === 'verify_email' ? (
             /* VIEW: EMAIL VERIFICATION OTP SCREEN */
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6">
               <div className="text-center">
                 <span className="text-3xl">✉️</span>
                 <h3 className="text-lg font-black text-slate-900 mt-2">Verify Your Email</h3>
@@ -642,7 +658,7 @@ function LoginFormContent() {
             </div>
           ) : authView === 'forgot_request' ? (
             /* VIEW: FORGOT PASSWORD EMAIL REQUEST */
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6">
               <div className="text-center">
                 <span className="text-3xl">🔑</span>
                 <h3 className="text-lg font-black text-slate-900 mt-2">Reset Password</h3>
@@ -699,7 +715,7 @@ function LoginFormContent() {
             </div>
           ) : authView === 'forgot_confirm' ? (
             /* VIEW: PASSWORD RESET TOKEN & NEW PASSWORD FORM */
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6">
               <div className="text-center">
                 <span className="text-3xl">🔒</span>
                 <h3 className="text-lg font-black text-slate-900 mt-2">Set New Password</h3>
@@ -890,7 +906,7 @@ function LoginFormContent() {
                     </div>
                   </>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                         Full Name <span className="text-rose-500 font-bold">*</span>
@@ -1099,7 +1115,7 @@ function LoginFormContent() {
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-xs text-slate-400 font-bold flex justify-center items-center gap-1.5 animate-fade-in" style={{ animationDelay: '0.1s' }}>
+        <div className="mt-8 text-center text-xs text-slate-400 font-bold flex justify-center items-center gap-1.5" style={{ animationDelay: '0.1s' }}>
           <span>Powered by</span>
           <img src="/spaceio_logo.png" alt="SpaceIO Logo" className="h-4 object-contain opacity-60 hover:opacity-100 transition-opacity" />
           <span className="text-slate-500">SpaceIO CRM</span>

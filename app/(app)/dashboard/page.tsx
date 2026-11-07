@@ -25,24 +25,20 @@ import {
   Upload,
   Save,
   Users,
-  Loader2
+  Loader2,
+  Menu
 } from 'lucide-react';
-import SpaceLoader from '../components/SpaceLoader';
-import { 
-  ResponsiveContainer, 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  Legend 
-} from 'recharts';
+import { useToast } from '../../components/ToastProvider';
+import SpaceLoader from '../../components/SpaceLoader';
+import { DashboardSkeleton, ChartSkeleton, TableRowsSkeleton } from '../../components/Skeleton';
+import dynamic from 'next/dynamic';
+import { performLogout } from "../../lib/session";
+
+// recharts is heavy: load it in its own chunk, only on the client
+const chartLoading = () => <ChartSkeleton />;
+const MonthlyAreaChart = dynamic(() => import('./components/DashboardCharts').then(m => m.MonthlyAreaChart), { ssr: false, loading: chartLoading });
+const StatusPieChart = dynamic(() => import('./components/DashboardCharts').then(m => m.StatusPieChart), { ssr: false, loading: chartLoading });
+const BudgetBarChart = dynamic(() => import('./components/DashboardCharts').then(m => m.BudgetBarChart), { ssr: false, loading: chartLoading });
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -252,6 +248,16 @@ export default function Dashboard() {
         }
       }
       setIsAuthenticated(true);
+      // Always trust the server over the cached copy so a previous login's name never lingers.
+      fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((me) => {
+          if (me) {
+            localStorage.setItem("decocrm_user", JSON.stringify(me));
+            setUser(me);
+          }
+        })
+        .catch(() => {});
     }
   }, [router]);
 
@@ -282,16 +288,19 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showAllClients, setShowAllClients] = useState(false);
   const [clientPage, setClientPage] = useState(1);
+  const [clientPageSize, setClientPageSize] = useState(10);
   const [showAllQuotes, setShowAllQuotes] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [rightChartTab, setRightChartTab] = useState<'stages' | 'budgets'>('stages');
   const [mounted, setMounted] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const toast = useToast();
 
   const handleDownloadPDF = async (e: React.MouseEvent, quoteId: string, projectName: string) => {
     e.preventDefault();
     e.stopPropagation();
     setDownloadingId(quoteId);
+    const toastId = toast.show("Generating PDF...", "loading");
     try {
       const token = localStorage.getItem("decocrm_auth_token");
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -313,8 +322,10 @@ export default function Dashboard() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      toast.update(toastId, "PDF downloaded", "success");
     } catch (err) {
       console.error("Failed to download PDF:", err);
+      toast.update(toastId, "PDF generation failed", "error");
       window.open(`/pdf/${quoteId}`, '_blank');
     } finally {
       setDownloadingId(null);
@@ -359,77 +370,60 @@ export default function Dashboard() {
     });
   };
 
-  const fetchDashboardData = useCallback(async () => {
+  const inFlightRef = useRef(false);
+  const lastFetchRef = useRef(0);
+
+  const fetchDashboardData = useCallback(async (force = true) => {
+      // Avoid re-fetching on every window focus: skip if a request is running or data is < 30s old
+      if (inFlightRef.current) return;
+      if (!force && Date.now() - lastFetchRef.current < 30000) return;
+      inFlightRef.current = true;
+      lastFetchRef.current = Date.now();
       setLoading(true);
       try {
         const localData = readLocalDashboardData();
-        const clientsRes = await fetch(`${API_BASE_URL}/clients`, { 
-          cache: 'no-store',
-          headers: getAuthHeaders()
-        });
-        const projectsRes = await fetch(`${API_BASE_URL}/projects`, { 
-          cache: 'no-store',
-          headers: getAuthHeaders()
-        });
+        const [clientsRes, projectsRes, payRes, quotesRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/clients`, { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null),
+          fetch(`${API_BASE_URL}/projects`, { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null),
+          fetch(`${API_BASE_URL}/payments`, { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null),
+          fetch(`${API_BASE_URL}/quotations`, { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null),
+        ]);
         
-        if (clientsRes.status === 401 || clientsRes.status === 403 || projectsRes.status === 401 || projectsRes.status === 403) {
+        if (clientsRes?.status === 401 || clientsRes?.status === 403 || projectsRes?.status === 401 || projectsRes?.status === 403) {
           localStorage.removeItem("decocrm_auth_token");
           localStorage.removeItem("decocrm_user");
           router.push("/login?redirect=/dashboard");
           return;
         }
         
-        let allPayments: any[] = [];
-        try {
-          const payRes = await fetch(`${API_BASE_URL}/payments`, { 
-            cache: 'no-store',
-            headers: getAuthHeaders()
-          });
-          if (payRes.ok) {
-            allPayments = mergeById(localData.payments || [], await payRes.json());
-          } else {
-            allPayments = localData.payments || [];
-          }
-        } catch {
-          allPayments = localData.payments || [];
+        let allPayments: any[] = localData.payments || [];
+        if (payRes?.ok) {
+          allPayments = mergeById(localData.payments || [], await payRes.json());
         }
 
-        if (clientsRes.ok && projectsRes.ok) {
+        if (clientsRes?.ok && projectsRes?.ok) {
           const clientsData = mergeById(localData.clients, await clientsRes.json());
           const projectsData = mergeById(localData.projects, await projectsRes.json());
           
           setClients(clientsData);
           setProjects(projectsData);
           
-          // Fetch quotations for all projects
-          const allQuotes: Quote[] = [...localData.quotes];
-          for (const proj of projectsData) {
-            try {
-              if (proj.id.startsWith("local_project_")) continue;
-              const qRes = await fetch(`${API_BASE_URL}/projects/${proj.id}/quotations`, { 
-                cache: 'no-store',
-                headers: getAuthHeaders()
-              });
-              if (qRes.ok) {
-                const qData = await qRes.json();
-                qData.forEach((q: any) => {
-                  allQuotes.push({
-                    id: q.id,
-                    project_id: q.project_id,
-                    project_name: q.project_name || proj.name,
-                    client_name: q.client_name || (clientsData.find((c: any) => c.id === proj.client_id)?.name) || "Unknown",
-                    version: q.version,
-                    grand_total: q.grand_total,
-                    status: q.status,
-                    created_at: q.created_at.split('T')[0]
-                  });
-                });
-              }
-            } catch (e) {
-              console.error("Failed to fetch quotations for project:", proj.id, e);
-            }
+          let fetchedQuotes: Quote[] = [];
+          if (quotesRes?.ok) {
+            const rawQuotes = await quotesRes.json();
+            fetchedQuotes = rawQuotes.map((q: any) => ({
+              id: q.id,
+              project_id: q.project_id,
+              project_name: q.project_name || (projectsData.find((p: any) => p.id === q.project_id)?.name) || "Project",
+              client_name: q.client_name || (clientsData.find((c: any) => c.id === (projectsData.find((p: any) => p.id === q.project_id)?.client_id))?.name) || "Unknown",
+              version: q.version,
+              grand_total: q.grand_total,
+              status: q.status,
+              created_at: q.created_at.split('T')[0]
+            }));
           }
           
+          const allQuotes = mergeById(localData.quotes, fetchedQuotes);
           allQuotes.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
           setRecentQuotes(allQuotes);
           
@@ -451,19 +445,29 @@ export default function Dashboard() {
         updateStatsFromData(localData.projects, localData.quotes, localData.payments || []);
         setHasLoaded(true);
       } finally {
+        inFlightRef.current = false;
         setLoading(false);
       }
   }, []);
 
   useEffect(() => {
-    fetchDashboardData();
+    // Show cached data instantly (stale-while-revalidate), then refresh from the API
+    const cached = readLocalDashboardData();
+    if (cached.clients.length || cached.projects.length || cached.quotes.length) {
+      setClients(cached.clients);
+      setProjects(cached.projects);
+      setRecentQuotes(cached.quotes);
+      updateStatsFromData(cached.projects, cached.quotes, cached.payments || []);
+      setHasLoaded(true);
+    }
+    fetchDashboardData(true);
 
     const handlePageShow = () => {
-      fetchDashboardData();
+      fetchDashboardData(false);
     };
 
     const handleFocus = () => {
-      fetchDashboardData();
+      fetchDashboardData(false);
     };
 
     window.addEventListener('pageshow', handlePageShow);
@@ -530,9 +534,9 @@ export default function Dashboard() {
   };
 
   const processedClients = getProcessedClients();
-  const totalClientPages = Math.ceil(processedClients.length / 10);
-  const displayedClients = showAllClients 
-    ? processedClients.slice((clientPage - 1) * 10, clientPage * 10) 
+  const totalClientPages = Math.max(1, Math.ceil(processedClients.length / clientPageSize));
+  const displayedClients = showAllClients
+    ? processedClients.slice((clientPage - 1) * clientPageSize, clientPage * clientPageSize)
     : processedClients.slice(0, 5);
   const displayedQuotes = showAllQuotes ? recentQuotes : recentQuotes.slice(0, 5);
   const displayedProjects = showAllProjects ? projects : projects.slice(0, 5);
@@ -649,69 +653,29 @@ export default function Dashboard() {
     'On Hold': '#F43F5E'
   };
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200/80 rounded-xl shadow-xl text-xs font-semibold">
-          <p className="text-slate-500 mb-1.5">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2 py-0.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="text-slate-600">{entry.name}:</span>
-              <span className="text-slate-900 font-extrabold">₹{entry.value.toLocaleString('en-IN')}</span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const CustomBarTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200/80 rounded-xl shadow-xl text-xs font-semibold">
-          <p className="text-slate-900 font-bold mb-1">{data.name}</p>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
-            <span className="text-slate-500">Budget:</span>
-            <span className="text-slate-900 font-extrabold">₹{data.budget.toLocaleString('en-IN')}</span>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const CustomPieTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200/80 rounded-xl shadow-xl text-xs font-semibold">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: data.fill }} />
-            <span className="text-slate-500">{data.name}:</span>
-            <span className="text-slate-900 font-extrabold">{data.value} {data.value === 1 ? 'project' : 'projects'}</span>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
   if (isAuthenticated === null) {
-    return <SpaceLoader loading={true} text="Verifying session..." />;
+    return <DashboardSkeleton />;
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20">
-      <SpaceLoader loading={!hasLoaded} text="Loading dashboard data..." />
+      {!hasLoaded && (
+        <div className="fixed inset-0 z-[60] overflow-auto bg-slate-50">
+          <DashboardSkeleton />
+        </div>
+      )}
       
       {/* TOP NAV BAR */}
       <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-4 py-4 md:px-10">
         <div className="flex justify-between items-center max-w-7xl mx-auto">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.dispatchEvent(new Event("spacio:toggle-sidebar"))}
+              className="lg:hidden p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             {user?.company_logo ? (
               <img 
                 src={user.company_logo} 
@@ -724,7 +688,7 @@ export default function Dashboard() {
               </div>
             )}
             <div className="border-l border-slate-200 pl-3">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">{user?.name || "Decoflare"}</h1>
+              <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">{user?.name || "Account"}</h1>
               <p className="text-[10px] text-slate-400 font-bold mt-0.5">CRM ENGINE</p>
             </div>
           </div>
@@ -752,8 +716,8 @@ export default function Dashboard() {
                 <div className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl shadow-xl z-50 overflow-hidden animate-fade-in py-2">
                   <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-1.5">
                     <div>
-                      <p className="text-xs font-black text-slate-800 truncate leading-none">{user?.name || "Decoflare User"}</p>
-                      <p className="text-[10px] text-slate-400 font-medium truncate mt-1 leading-none">{user?.email || "user@decoflare.in"}</p>
+                      <p className="text-xs font-black text-slate-800 truncate leading-none">{user?.name || "Account"}</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate mt-1 leading-none">{user?.email || ""}</p>
                     </div>
                     <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200/40">
                       {user?.role || "Designer"}
@@ -784,9 +748,7 @@ export default function Dashboard() {
                     
                     <button
                       onClick={() => {
-                        localStorage.removeItem("decocrm_auth_token");
-                        localStorage.removeItem("decocrm_user");
-                        router.push("/login");
+                        performLogout("manual");
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all text-left"
                     >
@@ -892,7 +854,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <>
-                  <span className="text-3xl font-extrabold text-slate-800">
+                  <span className="block max-w-full whitespace-nowrap text-2xl sm:text-3xl xl:text-[1.65rem] 2xl:text-3xl font-extrabold text-slate-800 tabular-nums">
                     ₹{stats.revenue.toLocaleString('en-IN')}
                   </span>
                   <div className="text-[10px] text-slate-500 flex flex-col gap-0.5 mt-2.5 font-semibold">
@@ -900,7 +862,7 @@ export default function Dashboard() {
                       <TrendingUp className="w-3.5 h-3.5" />
                       <span>Collected: ₹{stats.collected.toLocaleString('en-IN')}</span>
                     </div>
-                    <div className="text-slate-400 pl-5">
+                    <div className="text-slate-400 pl-[18px]">
                       Pending: ₹{stats.pendingPayments.toLocaleString('en-IN')}
                     </div>
                   </div>
@@ -953,37 +915,11 @@ export default function Dashboard() {
 
             <div className="w-full h-[280px] relative">
               {!mounted ? (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <SpaceLoader fullPage={false} size="md" />
+                <div className="absolute inset-0">
+                  <ChartSkeleton />
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
-                      </linearGradient>
-                      <linearGradient id="colorApproved" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                    <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis 
-                      stroke="#94A3B8" 
-                      fontSize={11} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      tickFormatter={(val) => `₹${val >= 100000 ? `${(val / 100000).toFixed(1)}L` : val.toLocaleString('en-IN')}`}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="total" name="Total Estimate" stroke="#8B5CF6" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
-                    <Area type="monotone" dataKey="approved" name="Approved Revenue" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorApproved)" />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 15 }} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <MonthlyAreaChart monthlyData={monthlyData} />
               )}
             </div>
           </div>
@@ -1040,22 +976,7 @@ export default function Dashboard() {
                 rightChartTab === 'stages' ? (
                   <div className="flex flex-col items-center justify-center w-full">
                     <div className="w-full h-[180px] relative">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={statusData}
-                            innerRadius={60}
-                            outerRadius={80}
-                            paddingAngle={3}
-                            dataKey="value"
-                          >
-                            {statusData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || '#94A3B8'} />
-                            ))}
-                          </Pie>
-                          <Tooltip content={<CustomPieTooltip />} />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <StatusPieChart statusData={statusData} statusColors={STATUS_COLORS} />
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center mt-3 max-w-xs">
                       {statusData.map((entry, index) => (
@@ -1068,22 +989,7 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div className="w-full h-[240px] relative">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={budgetData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
-                        <XAxis 
-                          type="number" 
-                          stroke="#94A3B8" 
-                          fontSize={10} 
-                          tickLine={false} 
-                          axisLine={false}
-                          tickFormatter={(val) => `₹${val >= 100000 ? `${(val / 100000).toFixed(1)}L` : val.toLocaleString('en-IN')}`}
-                        />
-                        <YAxis dataKey="name" type="category" stroke="#64748B" fontSize={10} width={80} tickLine={false} axisLine={false} />
-                        <Tooltip content={<CustomBarTooltip />} />
-                        <Bar dataKey="budget" fill="#8B5CF6" radius={[0, 8, 8, 0]} maxBarSize={20} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <BudgetBarChart budgetData={budgetData} />
                   </div>
                 )
               )}
@@ -1207,13 +1113,7 @@ export default function Dashboard() {
                       </td>
                     </tr>
                   )}
-                  {loading && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8">
-                        <SpaceLoader fullPage={false} size="md" />
-                      </td>
-                    </tr>
-                  )}
+                  {loading && displayedClients.length === 0 && <TableRowsSkeleton rows={4} cols={6} />}
                 </tbody>
               </table>
             </div>
@@ -1300,10 +1200,28 @@ export default function Dashboard() {
               )}
             </div>
 
-            {showAllClients && totalClientPages > 1 && (
+            {showAllClients && processedClients.length > 0 && (
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-5 pt-4 border-t border-slate-100 text-xs text-slate-500 font-bold">
-                <div>
-                  Showing {(clientPage - 1) * 10 + 1} to {Math.min(clientPage * 10, processedClients.length)} of {processedClients.length} clients
+                <div className="flex flex-wrap items-center gap-3">
+                  <span>
+                    Showing {(clientPage - 1) * clientPageSize + 1} to {Math.min(clientPage * clientPageSize, processedClients.length)} of {processedClients.length} clients
+                  </span>
+                  <label className="flex items-center gap-1.5">
+                    <span>Rows per page</span>
+                    <select
+                      value={clientPageSize}
+                      onChange={(e) => {
+                        setClientPageSize(Number(e.target.value));
+                        setClientPage(1);
+                      }}
+                      aria-label="Rows per page"
+                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700"
+                    >
+                      {[5, 10, 15, 20].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -1613,7 +1531,7 @@ export default function Dashboard() {
                       required
                       value={profileName}
                       onChange={(e) => setProfileName(e.target.value)}
-                      placeholder="e.g. Decoflare"
+                      placeholder="e.g. Your company name"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>
@@ -1628,7 +1546,7 @@ export default function Dashboard() {
                       required
                       value={profileEmail}
                       onChange={(e) => setProfileEmail(e.target.value)}
-                      placeholder="e.g. contact@decoflare.in"
+                      placeholder="e.g. contact@yourcompany.com"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>
@@ -1723,9 +1641,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={() => {
-                    localStorage.removeItem("decocrm_auth_token");
-                    localStorage.removeItem("decocrm_user");
-                    router.push("/login");
+                    performLogout("manual");
                   }}
                   className="flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold px-4 py-2.5 rounded-xl text-xs shadow-sm transition-all"
                   disabled={profileSaving}

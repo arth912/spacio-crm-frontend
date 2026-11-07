@@ -15,7 +15,7 @@ export default function SpaceLoader({
   fullPage = true,
   text,
   size = "md",
-  minDurationMs = 800,
+  minDurationMs = 0,
 }: SpaceLoaderProps) {
   const [shouldRender, setShouldRender] = useState(true);
   const [stage, setStage] = useState<"loading" | "completed">("loading");

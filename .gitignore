@@ -33,3 +33,5 @@ next-env.d.ts
 # OS files
 .DS_Store
 Thumbs.db
+
+.env

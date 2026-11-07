@@ -26,7 +26,10 @@ import {
   Users,
   Pencil
 } from 'lucide-react';
-import SpaceLoader from '../../components/SpaceLoader';
+import { useToast } from '../../../components/ToastProvider';
+import SpaceLoader from '../../../components/SpaceLoader';
+import { PageSkeleton } from '../../../components/Skeleton';
+import { performLogout } from "../../../lib/session";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -250,6 +253,16 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
         }
       }
       setIsAuthenticated(true);
+      // Always trust the server over the cached copy so a previous login's name never lingers.
+      fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((me) => {
+          if (me) {
+            localStorage.setItem("decocrm_user", JSON.stringify(me));
+            setUser(me);
+          }
+        })
+        .catch(() => {});
     }
   }, [router, params.id]);
 
@@ -266,6 +279,28 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
   const clientId = params.id;
   const [client, setClient] = useState<Client | null>(null);
   const [project, setProject] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string>("all");
+  const [selectedPaymentProjectId, setSelectedPaymentProjectId] = useState<string>("");
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showProjectDropdown) return;
+    const onDown = (e: MouseEvent) => {
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+        setShowProjectDropdown(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowProjectDropdown(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showProjectDropdown]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
@@ -277,6 +312,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
   const [transactionId, setTransactionId] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const toast = useToast();
 
   // Contact Info editing states
   const [isEditingContact, setIsEditingContact] = useState(false);
@@ -388,6 +424,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
     e.preventDefault();
     e.stopPropagation();
     setDownloadingId(quoteId);
+    const toastId = toast.show("Generating PDF...", "loading");
     try {
       const token = localStorage.getItem("decocrm_auth_token");
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -409,8 +446,10 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      toast.update(toastId, "PDF downloaded", "success");
     } catch (err) {
       console.error("Failed to download PDF:", err);
+      toast.update(toastId, "PDF generation failed", "error");
       window.open(`/pdf/${quoteId}`, '_blank');
     } finally {
       setDownloadingId(null);
@@ -419,22 +458,50 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
 
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !paymentAmount) return;
     
+    const targetProjectId = selectedPaymentProjectId || (activeProjectId !== "all" ? activeProjectId : projects[0]?.id || project?.id);
+    if (!targetProjectId) {
+      alert("Please select a project to record the payment.");
+      return;
+    }
+
+    const targetProject = projects.find(p => p.id === targetProjectId) || project;
+    if (!targetProject) {
+      alert("Selected project not found.");
+      return;
+    }
+
     const amountNum = parseFloat(paymentAmount);
-    if (isNaN(amountNum) || amountNum <= 0) return;
+    if (isNaN(amountNum) || amountNum <= 0) {
+      alert("Please enter a valid payment amount greater than 0.");
+      return;
+    }
+
+    let isoDate = new Date().toISOString();
+    if (paymentDate) {
+      try {
+        const d = new Date(paymentDate);
+        if (!isNaN(d.getTime())) {
+          isoDate = d.toISOString();
+        }
+      } catch {
+        isoDate = new Date().toISOString();
+      }
+    }
 
     const paymentPayload = {
-      project_id: project.id,
+      project_id: targetProject.id,
       amount: amountNum,
       payment_method: paymentMethod,
       transaction_id: transactionId || null,
       notes: paymentNotes || null,
-      payment_date: paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString()
+      payment_date: isoDate
     };
 
-    try {
-      if (!project.id.startsWith("local_project_")) {
+    let newPaymentRecord: any = null;
+
+    if (!targetProject.id.startsWith("local_project_")) {
+      try {
         const res = await fetch(`${API_BASE_URL}/payments`, {
           method: 'POST',
           headers: { 
@@ -443,20 +510,26 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
           },
           body: JSON.stringify(paymentPayload)
         });
+
         if (res.ok) {
-          const newPayment = await res.json();
-          setPayments(prev => [newPayment, ...prev]);
-          setPaymentAmount('');
-          setTransactionId('');
-          setPaymentNotes('');
-          setShowAddPaymentForm(false);
-          return;
+          const apiPayment = await res.json();
+          newPaymentRecord = {
+            ...apiPayment,
+            project_name: targetProject.name
+          };
+        } else {
+          console.warn("Backend API payment record returned status:", res.status);
         }
+      } catch (backendErr) {
+        console.warn("Backend payment recording failed, using local storage fallback:", backendErr);
       }
-      
-      const newLocalPayment = {
+    }
+
+    if (!newPaymentRecord) {
+      newPaymentRecord = {
         id: `local_payment_${Date.now()}`,
-        project_id: project.id,
+        project_id: targetProject.id,
+        project_name: targetProject.name,
         amount: amountNum,
         payment_date: paymentDate || new Date().toISOString().split('T')[0],
         payment_method: paymentMethod,
@@ -465,21 +538,28 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
         created_at: new Date().toISOString()
       };
 
-      const localData = readLocalDashboardData();
-      const updatedPayments = [newLocalPayment, ...localData.payments];
-      window.localStorage.setItem(LOCAL_DASHBOARD_DATA_KEY, JSON.stringify({
-        ...localData,
-        payments: updatedPayments
-      }));
-
-      setPayments(prev => [newLocalPayment, ...prev]);
-      setPaymentAmount('');
-      setTransactionId('');
-      setPaymentNotes('');
-      setShowAddPaymentForm(false);
-    } catch (err) {
-      console.error("Failed to add payment:", err);
+      try {
+        const localData = readLocalDashboardData();
+        const updatedPayments = [newPaymentRecord, ...(localData.payments || [])];
+        window.localStorage.setItem(LOCAL_DASHBOARD_DATA_KEY, JSON.stringify({
+          ...localData,
+          payments: updatedPayments
+        }));
+      } catch (err) {
+        console.error("Failed to save local payment data:", err);
+      }
     }
+
+    setPayments(prev => [newPaymentRecord, ...prev]);
+    
+    if (activeProjectId !== 'all') {
+      setActiveProjectId(targetProject.id);
+    }
+    
+    setPaymentAmount('');
+    setTransactionId('');
+    setPaymentNotes('');
+    setShowAddPaymentForm(false);
   };
 
   const handleDeletePayment = async (paymentId: string) => {
@@ -730,21 +810,49 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || b.version - a.version);
 
         setClient(resolvedClient);
-        const clientProject = clientProjects[0] || null;
-        setProject(clientProject);
+        setProjects(clientProjects);
+        const primaryProject = clientProjects[0] || null;
+        setProject(primaryProject);
+        setSelectedPaymentProjectId(prev => prev || primaryProject?.id || "");
         setQuotes(clientQuotes);
 
-        if (clientProject) {
-          if (!clientProject.id.startsWith("local_project_")) {
-            const payRes = await fetch(`${API_BASE_URL}/projects/${clientProject.id}/payments`, { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null);
+        // Fetch payments across ALL projects for this client
+        let fetchedPayments: any[] = [];
+        const clientPayRes = await fetch(`${API_BASE_URL}/clients/${clientId}/payments`, { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null);
+
+        if (clientPayRes?.ok) {
+          fetchedPayments = await clientPayRes.json();
+        } else {
+          // Fallback: fetch payments per project
+          for (const cp of clientProjects) {
+            if (cp.id.startsWith("local_project_")) continue;
+            const payRes = await fetch(`${API_BASE_URL}/projects/${cp.id}/payments`, { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null);
             if (payRes?.ok) {
-              const payData = await payRes.json();
-              setPayments(payData);
+              const pData = await payRes.json();
+              const mapped = pData.map((p: any) => ({ ...p, project_name: cp.name }));
+              fetchedPayments = mergeById(fetchedPayments, mapped);
             }
-          } else {
-            setPayments(localData.payments ? localData.payments.filter(p => p.project_id === clientProject.id) : []);
           }
         }
+
+        // Include local payments for any client projects
+        if (localData.payments) {
+          const localClientPayments = localData.payments
+            .filter((p: any) => clientProjectIds.has(p.project_id))
+            .map((p: any) => ({
+              ...p,
+              project_name: clientProjects.find((cp) => cp.id === p.project_id)?.name || "Project"
+            }));
+          fetchedPayments = mergeById(fetchedPayments, localClientPayments);
+        }
+
+        // Ensure each payment record has project_name attached
+        fetchedPayments = fetchedPayments.map((p: any) => ({
+          ...p,
+          project_name: p.project_name || clientProjects.find((cp) => cp.id === p.project_id)?.name || "Project"
+        }));
+
+        setPayments(fetchedPayments);
       } catch (err) {
         console.log("Failed to load client profile.", err);
         const localData = readLocalDashboardData();
@@ -753,13 +861,19 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
         const fallbackProjectIds = new Set(fallbackProjects.map((p) => p.id));
 
         setClient(fallbackClient);
+        setProjects(fallbackProjects);
         const fallbackProject = fallbackProjects[0] || null;
         setProject(fallbackProject);
+        setSelectedPaymentProjectId(prev => prev || fallbackProject?.id || "");
         setQuotes(localData.quotes.filter((q) => fallbackProjectIds.has(q.project_id)));
 
-        if (fallbackProject) {
-          setPayments(localData.payments ? localData.payments.filter(p => p.project_id === fallbackProject.id) : []);
-        }
+        const fallbackPayments = (localData.payments || [])
+          .filter((p: any) => fallbackProjectIds.has(p.project_id))
+          .map((p: any) => ({
+            ...p,
+            project_name: fallbackProjects.find((fp) => fp.id === p.project_id)?.name || "Project"
+          }));
+        setPayments(fallbackPayments);
       } finally {
         setLoading(false);
         setLoadingQuotes(false);
@@ -795,7 +909,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
 
   // Early return for auth checking
   if (isAuthenticated === null) {
-    return <SpaceLoader loading={true} text="Verifying session..." />;
+    return <PageSkeleton maxWidth="max-w-6xl" />;
   }
 
   // If loading is complete but client is not found, return Client Not Found early
@@ -825,7 +939,11 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20">
-      <SpaceLoader loading={loading} text="Loading Client Profile..." />
+      {loading && (
+        <div className="fixed inset-0 z-[60] overflow-auto bg-slate-50">
+          <PageSkeleton maxWidth="max-w-6xl" />
+        </div>
+      )}
       
       {/* NAV BAR */}
       <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-4 py-4 md:px-10">
@@ -843,7 +961,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
               </div>
             )}
             <div className="border-l border-slate-200 pl-2">
-              <h1 className="text-sm font-black text-slate-900 tracking-tight leading-none">{user?.name || "Decoflare"}</h1>
+              <h1 className="text-sm font-black text-slate-900 tracking-tight leading-none">{user?.name || "Account"}</h1>
               <p className="text-[9px] text-slate-400 font-bold mt-0.5">CRM ENGINE</p>
             </div>
           </div>
@@ -868,8 +986,8 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 <div className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl shadow-xl z-50 overflow-hidden animate-fade-in py-2">
                   <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-1.5">
                     <div>
-                      <p className="text-xs font-black text-slate-800 truncate leading-none">{user?.name || "Decoflare User"}</p>
-                      <p className="text-[10px] text-slate-400 font-medium truncate mt-1 leading-none">{user?.email || "user@decoflare.in"}</p>
+                      <p className="text-xs font-black text-slate-800 truncate leading-none">{user?.name || "Account"}</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate mt-1 leading-none">{user?.email || ""}</p>
                     </div>
                     <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200/40">
                       {user?.role || "Designer"}
@@ -900,9 +1018,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                     
                     <button
                       onClick={() => {
-                        localStorage.removeItem("decocrm_auth_token");
-                        localStorage.removeItem("decocrm_user");
-                        router.push("/login");
+                        performLogout("manual");
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all text-left"
                     >
@@ -947,30 +1063,14 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 )}
               </div>
               <h2 className="text-2xl font-black text-slate-800 mt-2">{displayClient.name}</h2>
-              <p className="text-sm font-bold text-slate-500 mt-1">
-                Project: <span className="text-slate-800 font-extrabold">{project ? project.name : ''}</span>
-              </p>
-            </div>
-
-            {/* Budget Metric */}
-            <div className="p-4 bg-stone-900 text-white rounded-2xl shadow-md min-w-[220px] border border-stone-800">
-              <span className="text-[10px] uppercase font-bold text-amber-500 tracking-widest block">Project Budget</span>
-              {isEditingContact ? (
-                <div className="flex items-center gap-1 mt-1.5 bg-stone-800 rounded-xl px-2 py-1 border border-stone-700">
-                  <IndianRupee className="w-4 h-4 text-amber-500 shrink-0" />
-                  <input
-                    type="number"
-                    value={editBudget}
-                    onChange={(e) => setEditBudget(e.target.value)}
-                    className="bg-transparent text-white text-lg font-black outline-none w-full"
-                  />
-                </div>
-              ) : (
-                <div className="flex items-baseline gap-1 mt-1">
-                  <IndianRupee className="w-5 h-5 text-amber-500" />
-                  <span className="text-2xl font-black">{project ? project.budget.toLocaleString('en-IN') : '0'}</span>
-                </div>
-              )}
+              <div className="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">Client Projects ({projects.length}):</span>
+                {projects.map((pj) => (
+                  <span key={pj.id} className="bg-slate-100 text-slate-700 font-extrabold px-2.5 py-0.5 rounded-md border border-slate-200/60 text-[11px]">
+                    {pj.name}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1113,6 +1213,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
             <div className="space-y-4">
               {quotes.map((q) => {
                 const isApproved = q.status.toLowerCase() === 'approved';
+                const matchingProject = projects.find(p => p.id === q.project_id);
                 return (
                   <div 
                     key={q.id}
@@ -1140,6 +1241,14 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between md:justify-end gap-6 shrink-0">
+                      {matchingProject && (
+                        <div>
+                          <span className="text-[10px] text-amber-600 block uppercase font-bold tracking-wider">Project Budget</span>
+                          <span className="font-extrabold text-sm text-slate-800">
+                            ₹{matchingProject.budget ? matchingProject.budget.toLocaleString('en-IN') : '0'}
+                          </span>
+                        </div>
+                      )}
                       <div>
                         <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Estimate Total</span>
                         <span className={`font-black text-sm ${isApproved ? 'text-emerald-700' : 'text-slate-800'}`}>
@@ -1196,12 +1305,21 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
             <div>
               <h3 className="text-lg font-black text-slate-800">Billing & Payment Tracking</h3>
-              <p className="text-xs text-slate-400 mt-1">Record payments and manage collection history for this client.</p>
+              <p className="text-xs text-slate-400 mt-1">Record payments and manage project-wise collection history for this client.</p>
             </div>
             
-            {project && (
+            {projects.length > 0 && (
               <button
-                onClick={() => setShowAddPaymentForm(!showAddPaymentForm)}
+                onClick={() => {
+                  if (!showAddPaymentForm) {
+                    if (activeProjectId !== 'all') {
+                      setSelectedPaymentProjectId(activeProjectId);
+                    } else if (projects.length > 0) {
+                      setSelectedPaymentProjectId(projects[0].id);
+                    }
+                  }
+                  setShowAddPaymentForm(!showAddPaymentForm);
+                }}
                 className="text-xs bg-stone-900 hover:bg-stone-800 text-white font-extrabold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 self-start sm:self-center border border-stone-800"
               >
                 {showAddPaymentForm ? 'Cancel Recording' : 'Record Received Payment'}
@@ -1209,28 +1327,115 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
             )}
           </div>
 
-          {project ? (() => {
-            const approvedQuote = quotes.find(q => q.status.toLowerCase() === 'approved');
-            const totalProjectCost = approvedQuote ? approvedQuote.grand_total : 0;
-            const totalReceived = payments.reduce((sum, p) => sum + p.amount, 0);
-            const remainingBalance = Math.max(0, totalProjectCost - totalReceived);
-            const collectionPercentage = totalProjectCost > 0 ? Math.min(100, Math.round((totalReceived / totalProjectCost) * 100)) : 0;
+          {/* PROJECT FILTER TABS */}
+          {projects.length > 0 && (
+            <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-4">
+              <button
+                onClick={() => { setActiveProjectId("all"); setShowProjectDropdown(false); }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeProjectId === "all"
+                    ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
+                }`}
+              >
+                All Projects ({projects.length})
+              </button>
+              <div className="relative" ref={projectDropdownRef}>
+                {(() => {
+                  const selected = projects.find((p) => p.id === activeProjectId);
+                  return (
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={showProjectDropdown}
+                      onClick={() => setShowProjectDropdown((v) => !v)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                        selected
+                          ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
+                      }`}
+                    >
+                      <span>{selected ? selected.name : 'Select Project'}</span>
+                      {selected && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-amber-600 text-amber-50">
+                          {selected.status}
+                        </span>
+                      )}
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showProjectDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                  );
+                })()}
+                {showProjectDropdown && (
+                  <div
+                    role="listbox"
+                    className="absolute left-0 top-full mt-2 z-20 min-w-[260px] max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-card p-1.5"
+                  >
+                    {projects.map((pj) => {
+                      const isActive = activeProjectId === pj.id;
+                      return (
+                        <button
+                          key={pj.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isActive}
+                          onClick={() => {
+                            setActiveProjectId(pj.id);
+                            setSelectedPaymentProjectId(pj.id);
+                            setShowProjectDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between gap-3 transition-colors ${
+                            isActive ? 'bg-amber-50 text-amber-700' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="truncate">{pj.name}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-slate-100 text-slate-500 shrink-0">
+                            {pj.status}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {projects.length > 0 ? (() => {
+            const currentProjects = activeProjectId === "all" 
+              ? projects 
+              : projects.filter(p => p.id === activeProjectId);
+
+            const currentPayments = activeProjectId === "all"
+              ? payments
+              : payments.filter(p => p.project_id === activeProjectId);
+
+            const totalContractValue = currentProjects.reduce((sum, pj) => {
+              const pjQuotes = quotes.filter(q => q.project_id === pj.id);
+              const approvedQuote = pjQuotes.find(q => q.status.toLowerCase() === 'approved');
+              return sum + (approvedQuote ? approvedQuote.grand_total : 0);
+            }, 0);
+
+            const totalReceived = currentPayments.reduce((sum, p) => sum + p.amount, 0);
+            const remainingBalance = Math.max(0, totalContractValue - totalReceived);
+            const collectionPercentage = totalContractValue > 0 ? Math.min(100, Math.round((totalReceived / totalContractValue) * 100)) : 0;
 
             return (
               <div className="space-y-6">
                 
                 {/* FINANCIAL SUMMARY CARDS */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {/* Project Cost */}
+                  {/* Contract Value */}
                   <div className="bg-slate-50/70 border border-slate-100 rounded-2xl p-5">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Contract Value</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                      {activeProjectId === "all" ? "Combined Contract Value" : "Project Contract Value"}
+                    </span>
                     <div className="flex items-baseline gap-1 mt-1">
                       <IndianRupee className="w-4 h-4 text-slate-400" />
                       <span className="text-xl font-extrabold text-slate-800">
-                        {totalProjectCost > 0 ? totalProjectCost.toLocaleString('en-IN') : 'No final quote selected'}
+                        {totalContractValue > 0 ? totalContractValue.toLocaleString('en-IN') : 'No final quote selected'}
                       </span>
                     </div>
-                    {totalProjectCost === 0 && (
+                    {totalContractValue === 0 && (
                       <span className="text-[10px] text-rose-500 font-semibold mt-1.5 block">
                         ⚠️ Please mark a revision as "Final" below to set contract budget.
                       </span>
@@ -1269,7 +1474,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 </div>
 
                 {/* COLLECTION PROGRESS BAR */}
-                {totalProjectCost > 0 && (
+                {totalContractValue > 0 && (
                   <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                     <div 
                       className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2.5 rounded-full transition-all duration-500" 
@@ -1282,8 +1487,27 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 {showAddPaymentForm && (
                   <form onSubmit={handleAddPayment} className="border border-amber-100 bg-amber-50/10 p-5 rounded-2xl space-y-4 animate-fade-in bg-white shadow">
                     <h4 className="text-xs uppercase font-extrabold text-amber-700 tracking-wider">Record Received Payment</h4>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       
+                      {/* Project Selection Dropdown (When client has multiple projects) */}
+                      {projects.length > 0 && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Select Project *</label>
+                          <select 
+                            value={selectedPaymentProjectId}
+                            onChange={(e) => setSelectedPaymentProjectId(e.target.value)}
+                            className="w-full text-xs border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 p-2.5 rounded-xl outline-none bg-white font-semibold text-slate-800"
+                          >
+                            {projects.map((pj) => (
+                              <option key={pj.id} value={pj.id}>
+                                {pj.name} (Budget: ₹{pj.budget ? pj.budget.toLocaleString('en-IN') : 0})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
                       {/* Amount */}
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Amount (₹) *</label>
@@ -1311,6 +1535,9 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                         </select>
                       </div>
 
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {/* Payment Date */}
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Payment Date</label>
@@ -1322,9 +1549,6 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                         />
                       </div>
 
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Reference / Transaction ID */}
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Transaction Ref / ID (Optional)</label>
@@ -1370,10 +1594,11 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
 
                 {/* PAYMENT TRANSACTION HISTORY TABLE */}
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[500px]">
+                  <table className="w-full text-left border-collapse min-w-[550px]">
                     <thead>
                       <tr className="border-b border-slate-100 text-slate-400 font-semibold text-[10px] uppercase tracking-wider">
                         <th className="pb-3 pl-2">Date</th>
+                        <th className="pb-3">Project</th>
                         <th className="pb-3">Method</th>
                         <th className="pb-3">Reference / ID</th>
                         <th className="pb-3">Notes</th>
@@ -1382,10 +1607,24 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {payments.map((p) => (
+                      {currentPayments.map((p) => (
                         <tr key={p.id} className="text-xs text-slate-600 hover:bg-slate-50/50 transition-colors duration-150">
                           <td className="py-3.5 pl-2 font-medium text-slate-500">
-                            {new Date(p.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {(() => {
+                              try {
+                                const d = new Date(p.payment_date);
+                                return !isNaN(d.getTime()) 
+                                  ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                  : (p.payment_date || '-');
+                              } catch {
+                                return p.payment_date || '-';
+                              }
+                            })()}
+                          </td>
+                          <td className="py-3.5 font-bold text-slate-800 text-[11px]">
+                            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/60 inline-block truncate max-w-[140px]" title={p.project_name || projects.find(pj => pj.id === p.project_id)?.name || "Project"}>
+                              {p.project_name || projects.find(pj => pj.id === p.project_id)?.name || "Project"}
+                            </span>
                           </td>
                           <td className="py-3.5">
                             <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
@@ -1415,10 +1654,10 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                           </td>
                         </tr>
                       ))}
-                      {payments.length === 0 && (
+                      {currentPayments.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="text-center py-8 text-slate-400 font-medium">
-                            No payment transactions recorded yet.
+                          <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">
+                            No payment transactions recorded for {activeProjectId === "all" ? "this client" : "this project"}.
                           </td>
                         </tr>
                       )}
@@ -1429,9 +1668,9 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
               </div>
             );
           })() : (
-            <p className="text-slate-400 text-xs font-semibold text-center py-6">
-              No active project found for this client. Please create a project to track payments.
-            </p>
+            <div className="text-center py-12 text-slate-400 font-medium text-xs">
+              No projects created for this client yet.
+            </div>
           )}
         </div>
         {/* Footer */}
@@ -1491,7 +1730,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                       required
                       value={profileName}
                       onChange={(e) => setProfileName(e.target.value)}
-                      placeholder="e.g. Decoflare"
+                      placeholder="e.g. Your company name"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>
@@ -1506,7 +1745,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                       required
                       value={profileEmail}
                       onChange={(e) => setProfileEmail(e.target.value)}
-                      placeholder="e.g. contact@decoflare.in"
+                      placeholder="e.g. contact@yourcompany.com"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>
@@ -1601,9 +1840,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                 <button
                   type="button"
                   onClick={() => {
-                    localStorage.removeItem("decocrm_auth_token");
-                    localStorage.removeItem("decocrm_user");
-                    router.push("/login");
+                    performLogout("manual");
                   }}
                   className="flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold px-4 py-2.5 rounded-xl text-xs shadow-sm transition-all"
                   disabled={profileSaving}

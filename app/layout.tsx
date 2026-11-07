@@ -1,5 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import SessionGuard from './components/SessionGuard';
+import ToastProvider from './components/ToastProvider';
 
 export const metadata: Metadata = {
   title: 'SpaceIO CRM — Premium Interior Design CRM',
@@ -20,14 +22,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "try{var t=localStorage.getItem('spacio-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}",
+          }}
+        />
         <link rel="icon" href="/spaceio_logo.png" sizes="32x32" />
         <link rel="apple-touch-icon" href="/spaceio_logo.png" />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ToastProvider>{children}</ToastProvider>
+        <SessionGuard />
+      </body>
     </html>
   );
 }

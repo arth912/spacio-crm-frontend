@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import DebouncedInput from '../../components/DebouncedInput';
 import { useRouter } from 'next/navigation';
 import { 
   Plus, 
@@ -30,7 +31,10 @@ import {
   Mail,
   Users
 } from 'lucide-react';
-import SpaceLoader from '../components/SpaceLoader';
+import { useToast } from '../../components/ToastProvider';
+import SpaceLoader from '../../components/SpaceLoader';
+import { PageSkeleton } from '../../components/Skeleton';
+import { performLogout } from "../../lib/session";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -294,6 +298,16 @@ export default function QuotationBuilder() {
         }
       }
       setIsAuthenticated(true);
+      // Always trust the server over the cached copy so a previous login's name never lingers.
+      fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((me) => {
+          if (me) {
+            localStorage.setItem("decocrm_user", JSON.stringify(me));
+            setUser(me);
+          }
+        })
+        .catch(() => {});
     }
   }, [router]);
 
@@ -310,6 +324,7 @@ export default function QuotationBuilder() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const pdfToast = useToast();
   const [successMsg, setSuccessMsg] = useState("");
   const [savedQuotationId, setSavedQuotationId] = useState<string | null>(null);
   const [savedStateKey, setSavedStateKey] = useState<string>("");
@@ -546,13 +561,20 @@ export default function QuotationBuilder() {
     setSavedStateKey(key);
   };
 
-  const isSaveDisabled = savedQuotationId ? (savedStateKey === getEstimationStateKey()) : false;
+  // JSON.stringify of the whole quotation: only recompute when the quotation data changes, not on every render.
+  const currentStateKey = useMemo(
+    () => (savedQuotationId ? getEstimationStateKey() : ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [savedQuotationId, clientName, clientPhone, clientEmail, projectName, siteAddress, projectBudget, rooms, selectedItems, discount, terms, applyGlobalGst, globalGstPercent]
+  );
+  const isSaveDisabled = savedQuotationId ? (savedStateKey === currentStateKey) : false;
 
   // Load catalog, categories, clients and projects from API
   useEffect(() => {
-    const fetchAllData = async () => {
+    const fetchCatalog = async () => {
       try {
         // Fetch categories first
+        const itemsPromise = fetch(`${API_BASE_URL}/catalog/items`, { headers: getAuthHeaders() });
         const catRes = await fetch(`${API_BASE_URL}/catalog/categories`, { headers: getAuthHeaders() });
         let fetchedCategories = null;
         if (catRes.ok) {
@@ -564,7 +586,7 @@ export default function QuotationBuilder() {
         }
 
         // Fetch items
-        const itemsRes = await fetch(`${API_BASE_URL}/catalog/items`, { headers: getAuthHeaders() });
+        const itemsRes = await itemsPromise;
         let itemsData = null;
         if (itemsRes.ok) {
           itemsData = await itemsRes.json();
@@ -581,24 +603,31 @@ export default function QuotationBuilder() {
           }
         }
 
-        // Fetch clients and projects
-        const pRes = await fetch(`${API_BASE_URL}/projects`, { headers: getAuthHeaders() });
-        const cRes = await fetch(`${API_BASE_URL}/clients`, { headers: getAuthHeaders() });
-        if (pRes.ok && cRes.ok) {
-          const pData = await pRes.json();
-          const cData = await cRes.json();
-          
-          setExistingClients(cData);
+      } catch (err) {
+        console.log("API offline. Using static catalog and fallbacks.", err);
+      }
+    };
+    fetchCatalog();
 
+    // Clients & projects load in parallel with the (large) catalog so step 1 is ready quickly
+    const fetchClientsAndProjects = async () => {
+      try {
+        const [pRes, cRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/projects`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE_URL}/clients`, { headers: getAuthHeaders() }),
+        ]);
+        if (pRes.ok && cRes.ok) {
+          const [pData, cData] = await Promise.all([pRes.json(), cRes.json()]);
+          setExistingClients(cData);
+          const clientNames = new Map<string, string>(cData.map((c: any) => [c.id, c.name]));
           const mapped = pData.map((p: any) => ({
             id: p.id,
             name: p.name,
             client_id: p.client_id,
-            client_name: cData.find((c: any) => c.id === p.client_id)?.name || "Unknown Client",
+            client_name: clientNames.get(p.client_id) || "Unknown Client",
             site_address: p.site_address,
             budget: p.budget
           }));
-          
           if (mapped.length > 0) {
             setExistingProjects(mapped);
           }
@@ -618,7 +647,7 @@ export default function QuotationBuilder() {
         setExistingProjects(mapped);
       }
     };
-    fetchAllData();
+    fetchClientsAndProjects();
   }, []);
 
   // Load URL query parameters (e.g. ?edit=xxx) and load quotation
@@ -1455,7 +1484,7 @@ export default function QuotationBuilder() {
     }
   };
 
-  const filteredCatalog = catalog.filter(item => {
+  const filteredCatalog = useMemo(() => catalog.filter(item => {
     const matchesCategory = item.category_id === activeCategoryId;
     if (!matchesCategory) return false;
     if (!catalogSearchQuery.trim()) return true;
@@ -1465,7 +1494,7 @@ export default function QuotationBuilder() {
       (item.subcategory && item.subcategory.toLowerCase().includes(query)) ||
       (item.brand && item.brand.toLowerCase().includes(query))
     );
-  });
+  }), [catalog, activeCategoryId, catalogSearchQuery]);
   const activeRoomItems = selectedItems.filter(item => item.room_id === activeRoomId);
   const goToStep = (nextStep: number) => {
     setStep(Math.min(4, Math.max(1, nextStep)) as 1 | 2 | 3 | 4);
@@ -1479,12 +1508,16 @@ export default function QuotationBuilder() {
   ];
 
   if (isAuthenticated === null) {
-    return <SpaceLoader loading={true} text="Verifying session..." />;
+    return <PageSkeleton stats={false} />;
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20">
-      <SpaceLoader loading={loading && rooms.length === 0} text="Loading quotation details..." />
+      {loading && rooms.length === 0 && (
+        <div className="fixed inset-0 z-[60] overflow-auto bg-slate-50">
+          <PageSkeleton stats={false} />
+        </div>
+      )}
       
       {/* NAV BAR */}
       <nav className="sticky top-0 z-50 glass-panel border-b border-slate-200/60 px-4 py-4 md:px-10">
@@ -1502,7 +1535,7 @@ export default function QuotationBuilder() {
               </div>
             )}
             <div className="border-l border-slate-200 pl-3">
-              <span className="text-base font-black text-slate-900 tracking-tight leading-none block">{user?.name || "Decoflare"}</span>
+              <span className="text-base font-black text-slate-900 tracking-tight leading-none block">{user?.name || "Account"}</span>
               <span className="text-[9px] text-amber-700 font-bold uppercase tracking-wider mt-0.5 block">Quotation Builder</span>
             </div>
           </div>
@@ -1530,8 +1563,8 @@ export default function QuotationBuilder() {
                 <div className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl shadow-xl z-50 overflow-hidden animate-fade-in py-2">
                   <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-1.5">
                     <div>
-                      <p className="text-xs font-black text-slate-800 truncate leading-none">{user?.name || "Decoflare User"}</p>
-                      <p className="text-[10px] text-slate-400 font-medium truncate mt-1 leading-none">{user?.email || "user@decoflare.in"}</p>
+                      <p className="text-xs font-black text-slate-800 truncate leading-none">{user?.name || "Account"}</p>
+                      <p className="text-[10px] text-slate-400 font-medium truncate mt-1 leading-none">{user?.email || ""}</p>
                     </div>
                     <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200/40">
                       {user?.role || "Designer"}
@@ -1562,9 +1595,7 @@ export default function QuotationBuilder() {
                     
                     <button
                       onClick={() => {
-                        localStorage.removeItem("decocrm_auth_token");
-                        localStorage.removeItem("decocrm_user");
-                        router.push("/login");
+                        performLogout("manual");
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all text-left"
                     >
@@ -1640,18 +1671,20 @@ export default function QuotationBuilder() {
                       setStep(s.num as 1 | 2 | 3 | 4);
                     }}
                     className={`flex flex-col items-center cursor-pointer transition-opacity ${
-                      isAccessible ? 'opacity-100' : 'opacity-50 hover:opacity-75'
+                      'opacity-100'
                     }`}
                   >
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] border transition-all duration-300 ${
                       s.num <= step 
-                        ? 'bg-gradient-to-br from-stone-950 to-stone-900 border-stone-900 text-white shadow-md' 
-                        : 'bg-white border-slate-200 text-slate-400'
+                        ? 'step-dot-active bg-gradient-to-br from-stone-950 to-stone-900 border-stone-900 text-white shadow-md' 
+                        : isAccessible
+                          ? 'bg-white border-slate-200 text-slate-400'
+                          : 'bg-white border-slate-100 text-slate-300'
                     } ${s.num === step ? 'ring-2 ring-amber-500/20' : ''}`}>
                       {s.icon}
                     </div>
                     <span className={`text-[9px] font-extrabold uppercase tracking-wider mt-1 transition-colors hidden sm:block ${
-                      s.num <= step ? 'text-amber-700 font-black' : 'text-slate-400'
+                      s.num <= step ? 'text-amber-700 font-black' : isAccessible ? 'text-slate-400' : 'text-slate-400 opacity-50'
                     }`}>{s.label}</span>
                   </div>
                 );
@@ -1676,7 +1709,7 @@ export default function QuotationBuilder() {
                 (step === 2 && rooms.length === 0) ||
                 (step === 3 && selectedItems.length === 0)
               }
-              className={`w-full flex items-center justify-center gap-1 px-3 h-8 rounded-full bg-gradient-to-r from-stone-950 to-stone-900 hover:from-stone-900 hover:to-stone-800 text-white font-bold text-[11px] shadow-sm hover:shadow transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none ${
+              className={`step-next w-full flex items-center justify-center gap-1 px-3 h-8 rounded-full bg-gradient-to-r from-stone-950 to-stone-900 hover:from-stone-900 hover:to-stone-800 text-white font-bold text-[11px] shadow-sm hover:shadow transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none ${
                 step < 4 ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
               }`}
               title={step === 3 ? "Review estimate" : "Go to next step"}
@@ -1856,10 +1889,10 @@ export default function QuotationBuilder() {
                   <label className="text-xs text-slate-500 font-semibold block mb-1.5">
                     Site Address <span className="text-slate-400 font-normal">(Optional)</span>
                   </label>
-                  <input 
-                    type="text" 
+                  <DebouncedInput
+                    type="text"
                     value={siteAddress}
-                    onChange={(e) => setSiteAddress(e.target.value)}
+                    onValueChange={setSiteAddress}
                     placeholder="e.g. Sector 15, Gurgaon"
                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 placeholder-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                   />
@@ -2339,10 +2372,10 @@ export default function QuotationBuilder() {
                                 <div className="pt-2 border-t border-slate-200/50">
                                   <div className="flex gap-2 items-center">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Remark:</span>
-                                    <input 
-                                      type="text" 
-                                      value={item.remark || ""} 
-                                      onChange={(e) => handleUpdateItemRemark(item.uid, e.target.value)}
+                                    <DebouncedInput
+                                      type="text"
+                                      value={item.remark || ""}
+                                      onValueChange={(v) => handleUpdateItemRemark(item.uid, v)}
                                       placeholder="Add item specifications, material remarks, etc..."
                                       className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all placeholder-slate-300"
                                     />
@@ -2498,10 +2531,10 @@ export default function QuotationBuilder() {
                   {/* Search Bar for selected category */}
                   <div className="relative mb-3">
                     <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
+                    <DebouncedInput
                       type="text"
                       value={catalogSearchQuery}
-                      onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                      onValueChange={setCatalogSearchQuery}
                       placeholder="Search items in this category..."
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-700 placeholder-slate-400 focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
                     />
@@ -2763,11 +2796,12 @@ export default function QuotationBuilder() {
                           <label className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Terms & Conditions</label>
                           <span className="text-[10px] text-slate-400 font-medium">Will be printed at PDF bottom</span>
                         </div>
-                        <textarea 
+                        <DebouncedInput
+                          multiline
                           rows={4}
                           value={terms}
                           placeholder="Enter project payment stages, delivery timelines, validity, etc..."
-                          onChange={(e) => setTerms(e.target.value)}
+                          onValueChange={setTerms}
                           className="w-full bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-slate-200/80 rounded-xl px-4 py-3 text-xs font-semibold text-slate-700 placeholder-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all duration-200 resize-none"
                         />
                       </div>
@@ -2874,9 +2908,10 @@ export default function QuotationBuilder() {
                         }
                         
                         if (targetQuoteId) {
+                          let pdfToastId = -1;
                           try {
                             setPdfLoading(true);
-                            showToastMsg("Generating PDF proposal...", "success");
+                            pdfToastId = pdfToast.show("Generating PDF...", "loading");
                             const response = await fetch(`${API_BASE_URL}/quotations/${targetQuoteId}/pdf`, {
                               headers: getAuthHeaders()
                             });
@@ -2901,10 +2936,10 @@ export default function QuotationBuilder() {
                             link.click();
                             document.body.removeChild(link);
                             window.URL.revokeObjectURL(url);
-                            showToastMsg("PDF downloaded successfully!", "success");
+                            pdfToast.update(pdfToastId, "PDF downloaded", "success");
                           } catch (error) {
                             console.error(error);
-                            showToastMsg("Error generating PDF. Please check backend connection.", "error");
+                            pdfToast.update(pdfToastId, "Error generating PDF. Please check backend connection.", "error");
                           } finally {
                             setPdfLoading(false);
                           }
@@ -3016,7 +3051,7 @@ export default function QuotationBuilder() {
                       required
                       value={profileName}
                       onChange={(e) => setProfileName(e.target.value)}
-                      placeholder="e.g. Decoflare"
+                      placeholder="e.g. Your company name"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>
@@ -3031,7 +3066,7 @@ export default function QuotationBuilder() {
                       required
                       value={profileEmail}
                       onChange={(e) => setProfileEmail(e.target.value)}
-                      placeholder="e.g. contact@decoflare.in"
+                      placeholder="e.g. contact@yourcompany.com"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>
@@ -3126,9 +3161,7 @@ export default function QuotationBuilder() {
                 <button
                   type="button"
                   onClick={() => {
-                    localStorage.removeItem("decocrm_auth_token");
-                    localStorage.removeItem("decocrm_user");
-                    router.push("/login");
+                    performLogout("manual");
                   }}
                   className="flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold px-4 py-2.5 rounded-xl text-xs shadow-sm transition-all"
                   disabled={profileSaving}

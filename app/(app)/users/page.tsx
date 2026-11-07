@@ -18,7 +18,8 @@ import {
   X,
   Upload
 } from 'lucide-react';
-import SpaceLoader from '../components/SpaceLoader';
+import SpaceLoader from '../../components/SpaceLoader';
+import { PageSkeleton } from '../../components/Skeleton';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -94,6 +95,18 @@ export default function UsersManagement() {
       setModalError("");
       setModalSuccess("");
 
+      // The list omits the large logo/terms fields; load them for this user.
+      let cancelled = false;
+      (async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/users/${selectedUser.id}`, { headers: getAuthHeaders() });
+          if (!res.ok || cancelled) return;
+          const full = await res.json();
+          setEditCompanyLogo(full.company_logo || "");
+          setEditGeneralTerms(full.general_terms || "");
+        } catch {}
+      })();
+
       const fetchSubscriptions = async () => {
         setSubsLoading(true);
         try {
@@ -110,6 +123,7 @@ export default function UsersManagement() {
         }
       };
       fetchSubscriptions();
+      return () => { cancelled = true; };
     } else {
       setSubscriptions([]);
     }
@@ -392,7 +406,11 @@ export default function UsersManagement() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20 py-8 px-4 sm:px-6 lg:px-8">
-      <SpaceLoader loading={loading} text="Loading users directory..." />
+      {loading && (
+        <div className="fixed inset-0 z-[60] overflow-auto bg-slate-50">
+          <PageSkeleton stats={false} maxWidth="max-w-6xl" />
+        </div>
+      )}
       <div className="max-w-6xl mx-auto">
         
         {/* Header */}
