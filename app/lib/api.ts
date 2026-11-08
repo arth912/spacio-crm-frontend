@@ -44,7 +44,19 @@ export interface StoredUser {
   name: string;
   email: string;
   role: string;
-  company_logo?: string;
+  phone?: string | null;
+  company_logo?: string | null;
+  general_terms?: string | null;
+  billing_terms?: string | null;
+  signature?: string | null;
+  stamp?: string | null;
+  billing_template?: string;
+}
+
+export function storeUser(user: StoredUser) {
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {}
 }
 
 export function readStoredUser(): StoredUser | null {
