@@ -859,6 +859,11 @@ export default function QuotationBuilder() {
             globalGstPercent: Number(loadedGstPercent || 0)
           });
           setSavedStateKey(initialKey);
+
+          // Opening an existing estimation: everything is already filled, so land on the final review step
+          if (loadedRooms.length > 0 && loadedItems.length > 0) {
+            setStep(4);
+          }
         }
       } catch (err) {
         console.error("Failed to load quotation for editing", err);

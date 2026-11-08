@@ -67,6 +67,14 @@ interface Client {
   address: string;
 }
 
+interface BillRef {
+  id: string;
+  bill_number: string;
+  project_id: string;
+  grand_total: number;
+  balance: number;
+}
+
 interface PaymentRecord {
   id: string;
   project_id: string;
@@ -75,6 +83,7 @@ interface PaymentRecord {
   payment_method: string;
   transaction_id?: string;
   notes?: string;
+  bill_id?: string | null;
   created_at: string;
 }
 
@@ -311,6 +320,10 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [transactionId, setTransactionId] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
+  // Generated bills (for "apply to bill" on a payment and to label payments with their bill)
+  const [allBills, setAllBills] = useState<BillRef[]>([]);
+  const [selectedBillId, setSelectedBillId] = useState('');
+  const billParamHandled = useRef(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const toast = useToast();
 
@@ -456,6 +469,33 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
     }
   };
 
+  // Generated bills, so a payment can be applied to one. Failure just hides the option.
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_BASE_URL}/bills?status=generated&limit=200`, { headers: getAuthHeaders(), cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: BillRef[]) => { if (alive) setAllBills(Array.isArray(rows) ? rows : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [payments.length]);
+
+  // Arriving from a bill ("Record a payment"): open the form with that bill selected.
+  useEffect(() => {
+    if (billParamHandled.current || allBills.length === 0) return;
+    const wanted = new URLSearchParams(window.location.search).get('bill');
+    if (!wanted) { billParamHandled.current = true; return; }
+    const bill = allBills.find((b) => b.id === wanted);
+    billParamHandled.current = true;
+    if (bill) {
+      setSelectedPaymentProjectId(bill.project_id);
+      setSelectedBillId(bill.id);
+      setShowAddPaymentForm(true);
+    }
+  }, [allBills]);
+
+  const paymentTargetProjectId = selectedPaymentProjectId || (activeProjectId !== "all" ? activeProjectId : projects[0]?.id || project?.id);
+  const payableBills = allBills.filter((b) => b.project_id === paymentTargetProjectId && b.balance > 0);
+
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -495,7 +535,8 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
       payment_method: paymentMethod,
       transaction_id: transactionId || null,
       notes: paymentNotes || null,
-      payment_date: isoDate
+      payment_date: isoDate,
+      bill_id: selectedBillId && payableBills.some((b) => b.id === selectedBillId) ? selectedBillId : null
     };
 
     let newPaymentRecord: any = null;
@@ -559,6 +600,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
     setPaymentAmount('');
     setTransactionId('');
     setPaymentNotes('');
+    setSelectedBillId('');
     setShowAddPaymentForm(false);
   };
 
@@ -711,44 +753,59 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
     }
   };
 
-  const handleProjectStatusChange = async (newStatus: string) => {
-    if (!project) return;
+  // Status edits in the Client Projects table: pending choice per project id, saved with the tick button.
+  const [pendingStatuses, setPendingStatuses] = useState<Record<string, string>>({});
+  const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
+
+  const handleProjectStatusChange = async (newStatus: string, target: Project | null = project): Promise<boolean> => {
+    if (!target) return false;
     try {
-      if (!project.id.startsWith("local_project_")) {
-        const res = await fetch(`${API_BASE_URL}/projects/${project.id}`, {
+      let updated: Project | null = null;
+      if (!target.id.startsWith("local_project_")) {
+        const res = await fetch(`${API_BASE_URL}/projects/${target.id}`, {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json',
             ...getAuthHeaders()
           },
           body: JSON.stringify({
-            client_id: project.client_id,
-            name: project.name,
-            site_address: project.site_address,
-            budget: project.budget,
+            client_id: target.client_id,
+            name: target.name,
+            site_address: target.site_address,
+            budget: target.budget,
             status: newStatus
           })
         });
-        if (res.ok) {
-          const updatedProj = await res.json();
-          setProject(updatedProj);
-        }
+        if (!res.ok) return false;
+        updated = await res.json();
       } else {
         const localData = readLocalDashboardData();
-        const updatedProjects = localData.projects.map(p => {
-          if (p.id === project.id) {
-            return { ...p, status: newStatus };
-          }
-          return p;
-        });
         window.localStorage.setItem(LOCAL_DASHBOARD_DATA_KEY, JSON.stringify({
           ...localData,
-          projects: updatedProjects
+          projects: localData.projects.map(p => (p.id === target.id ? { ...p, status: newStatus } : p))
         }));
-        setProject({ ...project, status: newStatus });
+        updated = { ...target, status: newStatus };
       }
+      const done = updated as Project;
+      setProjects(prev => prev.map(p => (p.id === done.id ? { ...p, ...done } : p)));
+      if (project && project.id === done.id) setProject({ ...project, ...done });
+      return true;
     } catch (err) {
       console.error("Failed to update project status:", err);
+      return false;
+    }
+  };
+
+  const saveRowStatus = async (pj: Project) => {
+    const next = pendingStatuses[pj.id];
+    if (!next) return;
+    setSavingStatusId(pj.id);
+    const ok = await handleProjectStatusChange(next, pj);
+    setSavingStatusId(null);
+    if (ok) {
+      setPendingStatuses(({ [pj.id]: _drop, ...rest }) => rest);
+    } else {
+      window.alert("Could not save the project status. Try again.");
     }
   };
 
@@ -900,6 +957,8 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
         return 'bg-orange-50 text-orange-700 border border-orange-200';
       case 'on hold':
         return 'bg-rose-50 text-rose-700 border border-rose-200';
+      case 'cancelled':
+        return 'bg-slate-100 text-slate-500 border border-slate-300 line-through';
       case 'completed':
         return 'bg-teal-50 text-teal-700 border border-teal-200';
       default:
@@ -1057,6 +1116,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                       <option value="Designing" className="bg-white text-slate-800 font-bold">Designing Status</option>
                       <option value="Start Working" className="bg-white text-slate-800 font-bold">Start Working Status</option>
                       <option value="On Hold" className="bg-white text-slate-800 font-bold">On Hold Status</option>
+                      <option value="Cancelled" className="bg-white text-slate-800 font-bold">Cancelled Status</option>
                       <option value="Completed" className="bg-white text-slate-800 font-bold">Completed Status</option>
                     </select>
                   </div>
@@ -1183,6 +1243,95 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* All Projects of this client */}
+        <div className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
+            <div>
+              <h3 className="text-lg font-black text-slate-800">Client Projects</h3>
+              <p className="text-xs text-slate-400 mt-1">All projects of this client with their estimates, budget and status.</p>
+            </div>
+            <span className="text-xs font-bold bg-amber-50 text-amber-700 px-3 py-1 rounded-full border border-amber-100/50 shrink-0 self-start sm:self-center">
+              {projects.length} Project{projects.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {projects.length === 0 ? (
+            <div className="text-center py-10 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+              <Briefcase className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-xs text-slate-500 font-semibold">No projects yet</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                    <th className="py-2 pr-4 font-extrabold">Project Name</th>
+                    <th className="py-2 pr-4 font-extrabold text-center">Estimates</th>
+                    <th className="py-2 pr-4 font-extrabold text-right">Budget</th>
+                    <th className="py-2 pr-4 font-extrabold">Address</th>
+                    <th className="py-2 font-extrabold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((pj) => (
+                    <tr key={pj.id} className="border-b border-slate-50 last:border-0 hover:bg-amber-50/10">
+                      <td className="py-3 pr-4 font-extrabold text-slate-800">{pj.name}</td>
+                      <td className="py-3 pr-4 text-center font-bold text-slate-700">
+                        {quotes.filter((q) => q.project_id === pj.id).length}
+                      </td>
+                      <td className="py-3 pr-4 text-right font-bold text-slate-700 whitespace-nowrap">
+                        ₹{(pj.budget || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-600 max-w-xs">{pj.site_address || '—'}</td>
+                      <td className="py-3">
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={pendingStatuses[pj.id] ?? pj.status}
+                            disabled={savingStatusId === pj.id}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setPendingStatuses(({ [pj.id]: _d, ...rest }) => (v === pj.status ? rest : { ...rest, [pj.id]: v }));
+                            }}
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold cursor-pointer outline-none border ${getStatusColor(pendingStatuses[pj.id] ?? pj.status)}`}
+                          >
+                            {["Draft", "Designing", "Start Working", "On Hold", "Cancelled", "Completed"].map((st) => (
+                              <option key={st} value={st} className="bg-white text-slate-800 font-bold">{st}</option>
+                            ))}
+                          </select>
+                          {pendingStatuses[pj.id] && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => saveRowStatus(pj)}
+                                disabled={savingStatusId === pj.id}
+                                title="Save status"
+                                aria-label="Save status"
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all disabled:opacity-60"
+                              >
+                                {savingStatusId === pj.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPendingStatuses(({ [pj.id]: _d, ...rest }) => rest)}
+                                disabled={savingStatusId === pj.id}
+                                title="Cancel"
+                                aria-label="Cancel"
+                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Revision History Card (below the client details card) */}
@@ -1401,13 +1550,16 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
           )}
 
           {projects.length > 0 ? (() => {
-            const currentProjects = activeProjectId === "all" 
+            // Cancelled projects are excluded from contract value and payment totals
+            const isCancelledProj = (pj: any) => (pj.status || '').toLowerCase().includes('cancel');
+            const cancelledProjIds = new Set(projects.filter(isCancelledProj).map(pj => pj.id));
+            const currentProjects = (activeProjectId === "all" 
               ? projects 
-              : projects.filter(p => p.id === activeProjectId);
+              : projects.filter(p => p.id === activeProjectId)).filter(pj => !isCancelledProj(pj));
 
-            const currentPayments = activeProjectId === "all"
+            const currentPayments = (activeProjectId === "all"
               ? payments
-              : payments.filter(p => p.project_id === activeProjectId);
+              : payments.filter(p => p.project_id === activeProjectId)).filter(p => !cancelledProjIds.has(p.project_id));
 
             const totalContractValue = currentProjects.reduce((sum, pj) => {
               const pjQuotes = quotes.filter(q => q.project_id === pj.id);
@@ -1503,6 +1655,28 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                               <option key={pj.id} value={pj.id}>
                                 {pj.name} (Budget: ₹{pj.budget ? pj.budget.toLocaleString('en-IN') : 0})
                               </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Apply to a generated bill (optional) */}
+                      {payableBills.length > 0 && (
+                        <div>
+                          <label htmlFor="payment-bill" className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Apply to bill (Optional)</label>
+                          <select
+                            id="payment-bill"
+                            value={selectedBillId}
+                            onChange={(e) => {
+                              setSelectedBillId(e.target.value);
+                              const b = payableBills.find((x) => x.id === e.target.value);
+                              if (b && !paymentAmount) setPaymentAmount(String(b.balance));
+                            }}
+                            className="w-full text-xs border border-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 p-2.5 rounded-xl outline-none bg-white font-semibold text-slate-800"
+                          >
+                            <option value="">Not linked to a bill</option>
+                            {payableBills.map((b) => (
+                              <option key={b.id} value={b.id}>{b.bill_number} (Balance: ₹{b.balance.toLocaleString('en-IN')})</option>
                             ))}
                           </select>
                         </div>
@@ -1625,6 +1799,11 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                             <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/60 inline-block truncate max-w-[140px]" title={p.project_name || projects.find(pj => pj.id === p.project_id)?.name || "Project"}>
                               {p.project_name || projects.find(pj => pj.id === p.project_id)?.name || "Project"}
                             </span>
+                            {p.bill_id && allBills.find((b) => b.id === p.bill_id) && (
+                              <span className="block mt-1 text-[10px] font-semibold text-amber-700">
+                                Bill {allBills.find((b) => b.id === p.bill_id)?.bill_number}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3.5">
                             <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${

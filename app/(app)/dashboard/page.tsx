@@ -1,5 +1,6 @@
 "use client";
 
+import ThemeToggle from "../../components/ThemeToggle";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
@@ -350,13 +351,17 @@ export default function Dashboard() {
   }, []);
 
   const updateStatsFromData = (projectsData: Project[], quotesData: Quote[], paymentsData: any[]) => {
-    const activeProjCount = projectsData.filter((p: any) => p.status !== 'Completed').length;
-    const pendingQuotesCount = quotesData.filter((q: any) => q.status === 'sent' || q.status === 'pending' || q.status === 'draft').length;
-    const approvedQuotes = quotesData.filter((q: any) => q.status === 'approved');
+    const isCancelled = (st?: string) => (st || '').toLowerCase().includes('cancel');
+    const cancelledIds = new Set(projectsData.filter((p: any) => isCancelled(p.status)).map((p: any) => p.id));
+    const approvedQuotes = quotesData.filter((q: any) => q.status === 'approved' && !cancelledIds.has(q.project_id));
+    const finalProjectIds = new Set(approvedQuotes.map((q: any) => q.project_id));
+    // Active = not cancelled/completed AND has a quote marked as final
+    const activeProjCount = projectsData.filter((p: any) => finalProjectIds.has(p.id) && p.status !== 'Completed' && !isCancelled(p.status)).length;
+    const pendingQuotesCount = quotesData.filter((q: any) => !cancelledIds.has(q.project_id) && (q.status === 'sent' || q.status === 'pending' || q.status === 'draft')).length;
     const totalRevenue = approvedQuotes.reduce((sum, q) => sum + q.grand_total, 0);
     const delayedProjCount = projectsData.filter((p: any) => p.status === 'On Hold').length || 0;
 
-    const totalCollected = paymentsData.reduce((sum, p) => sum + p.amount, 0);
+    const totalCollected = paymentsData.filter((p: any) => !cancelledIds.has(p.project_id)).reduce((sum, p) => sum + p.amount, 0);
     const pendingPayments = Math.max(0, totalRevenue - totalCollected);
 
     setStats({
@@ -535,10 +540,8 @@ export default function Dashboard() {
 
   const processedClients = getProcessedClients();
   const totalClientPages = Math.max(1, Math.ceil(processedClients.length / clientPageSize));
-  const displayedClients = showAllClients
-    ? processedClients.slice((clientPage - 1) * clientPageSize, clientPage * clientPageSize)
-    : processedClients.slice(0, 5);
-  const displayedQuotes = showAllQuotes ? recentQuotes : recentQuotes.slice(0, 5);
+  const displayedClients = processedClients.slice(0, 5);
+  const displayedQuotes = recentQuotes.slice(0, 5);
   const displayedProjects = showAllProjects ? projects : projects.slice(0, 5);
 
   const getMonthlyData = () => {
@@ -576,7 +579,8 @@ export default function Dashboard() {
       'Designing': 0,
       'Start Working': 0,
       'Completed': 0,
-      'On Hold': 0
+      'On Hold': 0,
+      'Cancelled': 0
     };
     
     projects.forEach(p => {
@@ -586,7 +590,8 @@ export default function Dashboard() {
       else if (status.toLowerCase().includes('exec') || status.toLowerCase().includes('work')) normalized = 'Start Working';
       else if (status.toLowerCase().includes('comp')) normalized = 'Completed';
       else if (status.toLowerCase().includes('hold')) normalized = 'On Hold';
-      
+      else if (status.toLowerCase().includes('cancel')) normalized = 'Cancelled';
+
       if (normalized in statusCounts) {
         statusCounts[normalized]++;
       }
@@ -650,7 +655,8 @@ export default function Dashboard() {
     'Start Working': '#10B981',
     'Execution': '#10B981',
     'Completed': '#8B5CF6',
-    'On Hold': '#F43F5E'
+    'On Hold': '#F43F5E',
+    'Cancelled': '#94A3B8'
   };
 
   if (isAuthenticated === null) {
@@ -693,6 +699,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex gap-3 items-center">
+            <ThemeToggle />
             <a 
               href="/quotation-builder" 
               className="flex items-center gap-2 bg-stone-900 hover:bg-stone-850 text-white font-bold px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-205 text-xs sm:text-sm"
@@ -1006,14 +1013,11 @@ export default function Dashboard() {
             </div>
             {processedClients.length > 5 && (
               <button 
-                onClick={() => {
-                  setShowAllClients(!showAllClients);
-                  setClientPage(1);
-                }}
+                onClick={() => router.push("/clients")}
                 className="text-xs text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1.5 hover:gap-2 transition-all"
               >
-                {showAllClients ? "Show Less" : "View All"}
-                <ArrowRight className={`w-3.5 h-3.5 transition-transform duration-200 ${showAllClients ? '-rotate-90' : ''}`} />
+                Load More
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -1200,7 +1204,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            {showAllClients && processedClients.length > 0 && (
+            {false && processedClients.length > 0 && (
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-5 pt-4 border-t border-slate-100 text-xs text-slate-500 font-bold">
                 <div className="flex flex-wrap items-center gap-3">
                   <span>
@@ -1267,13 +1271,15 @@ export default function Dashboard() {
                 <h3 className="text-base font-bold text-slate-800">Recent Quotations</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Manage, edit and download your proposals.</p>
               </div>
-              <button 
-                onClick={() => setShowAllQuotes(!showAllQuotes)}
-                className="text-xs text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1.5 hover:gap-2 transition-all"
-              >
-                {showAllQuotes ? "Show Less" : "View All"}
-                <ArrowRight className={`w-3.5 h-3.5 transition-transform duration-200 ${showAllQuotes ? '-rotate-90' : ''}`} />
-              </button>
+              {recentQuotes.length > 5 && (
+                <button 
+                  onClick={() => router.push("/estimations")}
+                  className="text-xs text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1.5 hover:gap-2 transition-all"
+                >
+                  Load More
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {/* Desktop Table View */}
@@ -1396,20 +1402,11 @@ export default function Dashboard() {
             {recentQuotes.length > 5 && (
               <div className="flex justify-center mt-4 pt-4 border-t border-slate-100">
                 <button
-                  onClick={() => setShowAllQuotes(!showAllQuotes)}
+                  onClick={() => router.push("/estimations")}
                   className="text-xs bg-amber-50 hover:bg-amber-100/80 text-amber-800 font-extrabold px-5 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 hover:gap-2"
                 >
-                  {showAllQuotes ? (
-                    <>
-                      <span>Show Less</span>
-                      <ChevronUp className="w-3.5 h-3.5" />
-                    </>
-                  ) : (
-                    <>
-                      <span>View More ({recentQuotes.length - 5} more)</span>
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </>
-                  )}
+                  <span>Load More ({recentQuotes.length - 5} more)</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}

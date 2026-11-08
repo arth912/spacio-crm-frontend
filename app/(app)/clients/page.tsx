@@ -55,11 +55,12 @@ export default function ClientsPage() {
       clients.map((c) => {
         const ps = projects.filter((p) => p.client_id === c.id);
         const ids = new Set(ps.map((p) => p.id));
+        const cancelled = new Set(ps.filter((p) => p.status === "Cancelled").map((p) => p.id));
         return {
           ...c,
           projects: ps,
-          active: ps.filter((p) => p.status !== "Completed").length,
-          approved: quotes.filter((q) => ids.has(q.project_id) && q.status === "approved").reduce((s, q) => s + q.grand_total, 0),
+          active: ps.filter((p) => p.status !== "Completed" && p.status !== "Cancelled" && quotes.some((q) => q.project_id === p.id && q.status === "approved")).length,
+          approved: quotes.filter((q) => ids.has(q.project_id) && q.status === "approved" && !cancelled.has(q.project_id)).reduce((s, q) => s + q.grand_total, 0),
         };
       }),
     [clients, projects, quotes]
