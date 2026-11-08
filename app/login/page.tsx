@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Lock, 
@@ -17,6 +17,71 @@ import {
 import SpaceLoader from '../components/SpaceLoader';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+
+type FieldKey = 'email' | 'password' | 'name' | 'phone' | 'logo' | 'otpCode' | 'resetToken' | 'newPassword' | 'confirmNewPassword';
+
+type DebouncedInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
+  value: string;
+  /** Debounced: called once the user pauses typing (updates parent state / triggers re-render). */
+  onValueChange: (v: string) => void;
+  /** Immediate, no re-render: keeps the latest typed value available for submit. */
+  onLiveChange?: (v: string) => void;
+  transform?: (v: string) => string;
+  delay?: number;
+};
+
+/**
+ * Keeps keystrokes in local state so only this input re-renders while typing.
+ * The parent form is updated after `delay` ms of inactivity (and on unmount).
+ */
+function DebouncedInput({ value, onValueChange, onLiveChange, transform, delay = 300, ...rest }: DebouncedInputProps) {
+  const [local, setLocal] = useState(value);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<string | null>(null);
+  const lastEmitted = useRef(value);
+  const latest = useRef({ onValueChange });
+  latest.current = { onValueChange };
+
+  const flush = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (pending.current !== null) {
+      lastEmitted.current = pending.current;
+      latest.current.onValueChange(pending.current);
+      pending.current = null;
+    }
+  }, []);
+
+  // Pick up programmatic changes from the parent (e.g. logo upload, form reset)
+  useEffect(() => {
+    if (value !== lastEmitted.current) {
+      lastEmitted.current = value;
+      pending.current = null;
+      setLocal(value);
+    }
+  }, [value]);
+
+  useEffect(() => flush, [flush]);
+
+  return (
+    <input
+      {...rest}
+      value={local}
+      onChange={(e) => {
+        const v = transform ? transform(e.target.value) : e.target.value;
+        setLocal(v);
+        onLiveChange?.(v);
+        pending.current = v;
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(flush, delay);
+      }}
+      onBlur={(e) => {
+        flush();
+        rest.onBlur?.(e);
+      }}
+    />
+  );
+}
 
 function LoginFormContent() {
   const router = useRouter();
@@ -52,6 +117,14 @@ function LoginFormContent() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
+  // Always-current values (updated on every keystroke without re-rendering); used by submit handlers
+  const valuesRef = useRef<Record<FieldKey, string>>({
+    email: "", password: "", name: "", phone: "", logo: "",
+    otpCode: "", resetToken: "", newPassword: "", confirmNewPassword: "",
+  });
+  const live = (k: FieldKey) => (v: string) => { valuesRef.current[k] = v; };
+  const resetFields = (...keys: FieldKey[]) => { keys.forEach((k) => { valuesRef.current[k] = ""; }); };
+
   useEffect(() => {
     if (logoutReason === 'idle') setErrorMsg("You were signed out after a period of inactivity. Please sign in again.");
     else if (logoutReason === 'expired') setErrorMsg("Your session has ended (it expired or you signed in on another device). Please sign in again.");
@@ -76,6 +149,7 @@ function LoginFormContent() {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
+        valuesRef.current.logo = reader.result as string;
         setLogo(reader.result as string);
       };
       reader.readAsDataURL(file);
@@ -217,6 +291,7 @@ function LoginFormContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const { email, password, name, phone, logo } = valuesRef.current;
     setLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -292,6 +367,7 @@ function LoginFormContent() {
 
   const handleVerifyEmail = async (e: React.FormEvent) => {
     e.preventDefault();
+    const { email, password, name, phone, logo, otpCode } = valuesRef.current;
     setLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -350,6 +426,7 @@ function LoginFormContent() {
               localStorage.setItem("decocrm_auth_token", verifyData.access_token);
               localStorage.setItem("decocrm_user", JSON.stringify(verifyData.user));
               setSuccessMsg("Payment verified! Account activated successfully. Redirecting...");
+              resetFields('name', 'email', 'password', 'phone', 'logo', 'otpCode');
               setName("");
               setEmail("");
               setPassword("");
@@ -397,6 +474,7 @@ function LoginFormContent() {
 
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    const { email } = valuesRef.current;
     setLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -422,6 +500,7 @@ function LoginFormContent() {
 
   const handleConfirmReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    const { email, resetToken, newPassword, confirmNewPassword } = valuesRef.current;
     if (newPassword !== confirmNewPassword) {
       setErrorMsg("Passwords do not match. Please re-enter.");
       return;
@@ -447,6 +526,7 @@ function LoginFormContent() {
       setSuccessMsg("Password has been reset successfully! Please sign in with your new password.");
       setAuthView('auth');
       setActiveTab('login');
+      resetFields('password', 'newPassword', 'confirmNewPassword', 'resetToken');
       setPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
@@ -614,12 +694,14 @@ function LoginFormContent() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 text-center">
                     6-Digit Code
                   </label>
-                  <input
+                  <DebouncedInput
                     type="text"
                     required
                     maxLength={6}
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                    onValueChange={setOtpCode}
+                    onLiveChange={live('otpCode')}
+                    transform={(v) => v.replace(/\D/g, '')}
                     placeholder="e.g. 123456"
                     className="w-full text-center text-lg font-mono font-black bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-700 tracking-[0.4em] focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                   />
@@ -648,6 +730,7 @@ function LoginFormContent() {
                   setAuthView('auth');
                   setErrorMsg("");
                   setSuccessMsg("");
+                  resetFields('otpCode');
                   setOtpCode("");
                 }}
                 className="w-full text-center text-xs font-bold text-slate-500 hover:text-slate-750 flex items-center justify-center gap-1 mt-4"
@@ -672,11 +755,12 @@ function LoginFormContent() {
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
+                    <DebouncedInput
                       type="email"
                       required
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onValueChange={setEmail}
+                      onLiveChange={live('email')}
                       placeholder="e.g. designer@spaceio.com"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
@@ -727,12 +811,14 @@ function LoginFormContent() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 text-center">
                     6-Digit Verification Code
                   </label>
-                  <input
+                  <DebouncedInput
                     type="text"
                     required
                     maxLength={6}
                     value={resetToken}
-                    onChange={(e) => setResetToken(e.target.value.replace(/\D/g, ''))}
+                    onValueChange={setResetToken}
+                    onLiveChange={live('resetToken')}
+                    transform={(v) => v.replace(/\D/g, '')}
                     placeholder="e.g. 123456"
                     className="w-full text-center text-base font-mono font-bold bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 tracking-[0.3em] focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                   />
@@ -744,12 +830,13 @@ function LoginFormContent() {
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
+                    <DebouncedInput
                       type={showPassword ? "text" : "password"}
                       required
                       minLength={6}
                       value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
+                      onValueChange={setNewPassword}
+                      onLiveChange={live('newPassword')}
                       placeholder="••••••••"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
@@ -769,11 +856,12 @@ function LoginFormContent() {
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
+                    <DebouncedInput
                       type={showPassword ? "text" : "password"}
                       required
                       value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      onValueChange={setConfirmNewPassword}
+                      onLiveChange={live('confirmNewPassword')}
                       placeholder="••••••••"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
@@ -803,6 +891,7 @@ function LoginFormContent() {
                   setAuthView('auth');
                   setErrorMsg("");
                   setSuccessMsg("");
+                  resetFields('resetToken', 'newPassword', 'confirmNewPassword');
                   setResetToken("");
                   setNewPassword("");
                   setConfirmNewPassword("");
@@ -857,11 +946,12 @@ function LoginFormContent() {
                       </label>
                       <div className="relative">
                         <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
+                        <DebouncedInput
                           type="email"
                           required
                           value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          onValueChange={setEmail}
+                          onLiveChange={live('email')}
                           placeholder="e.g. designer@spaceio.com"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
@@ -887,11 +977,12 @@ function LoginFormContent() {
                       </div>
                       <div className="relative">
                         <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
+                        <DebouncedInput
                           type={showPassword ? "text" : "password"}
                           required
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
+                          onValueChange={setPassword}
+                          onLiveChange={live('password')}
                           placeholder="••••••••"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
@@ -913,11 +1004,12 @@ function LoginFormContent() {
                       </label>
                       <div className="relative">
                         <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
+                        <DebouncedInput
                           type="text"
                           required
                           value={name}
-                          onChange={(e) => setName(e.target.value)}
+                          onValueChange={setName}
+                          onLiveChange={live('name')}
                           placeholder="e.g. Rajesh Kumar"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
@@ -930,11 +1022,12 @@ function LoginFormContent() {
                       </label>
                       <div className="relative">
                         <span className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-xs font-black">📞</span>
-                        <input
+                        <DebouncedInput
                           type="tel"
                           required
                           value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
+                          onValueChange={setPhone}
+                          onLiveChange={live('phone')}
                           placeholder="e.g. +91 99000 12345"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
@@ -947,11 +1040,12 @@ function LoginFormContent() {
                       </label>
                       <div className="relative">
                         <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
+                        <DebouncedInput
                           type="email"
                           required
                           value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          onValueChange={setEmail}
+                          onLiveChange={live('email')}
                           placeholder="e.g. designer@spaceio.com"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
@@ -964,11 +1058,12 @@ function LoginFormContent() {
                       </label>
                       <div className="relative">
                         <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
+                        <DebouncedInput
                           type={showPassword ? "text" : "password"}
                           required
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
+                          onValueChange={setPassword}
+                          onLiveChange={live('password')}
                           placeholder="••••••••"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
@@ -1001,10 +1096,11 @@ function LoginFormContent() {
                           </div>
                         )}
                         <div className="flex-1 space-y-2">
-                          <input 
+                          <DebouncedInput 
                             type="text" 
                             value={logo}
-                            onChange={(e) => setLogo(e.target.value)}
+                            onValueChange={setLogo}
+                            onLiveChange={live('logo')}
                             placeholder="Paste logo URL here..."
                             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                           />
@@ -1022,7 +1118,7 @@ function LoginFormContent() {
                             {logo && (
                               <button
                                 type="button"
-                                onClick={() => setLogo("")}
+                                onClick={() => { resetFields('logo'); setLogo(""); }}
                                 className="text-[10px] font-bold text-rose-600 hover:text-rose-800 transition-colors"
                               >
                                 Remove Logo

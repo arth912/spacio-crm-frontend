@@ -786,14 +786,14 @@ export default function Dashboard() {
           </div>
 
           {/* Revenue */}
-          <div className="glass-panel rounded-2xl p-5 border border-slate-200/60 bg-gradient-to-br from-white via-white to-emerald-50/15 shadow-sm hover:shadow-[0_8px_30px_rgb(16,185,129,0.08)] hover:border-emerald-300/80 transition-all duration-300 hover:-translate-y-1">
-            <div className="flex justify-between items-start">
-              <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Revenue Pipeline</span>
-              <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-600">
+          <div className="glass-panel min-w-0 overflow-hidden rounded-2xl p-4 sm:p-5 border border-slate-200/60 bg-gradient-to-br from-white via-white to-emerald-50/15 shadow-sm hover:shadow-[0_8px_30px_rgb(16,185,129,0.08)] hover:border-emerald-300/80 transition-all duration-300 hover:-translate-y-1">
+            <div className="flex justify-between items-start gap-2">
+              <span className="min-w-0 text-slate-400 font-bold text-xs uppercase tracking-wider">Revenue Pipeline</span>
+              <div className="shrink-0 p-2 bg-emerald-500/10 rounded-xl text-emerald-600">
                 <IndianRupee className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-4">
+            <div className="mt-4 min-w-0">
               {!hasLoaded ? (
                 <div className="space-y-2 mb-1">
                   <div className="h-9 w-32 bg-slate-200 animate-pulse rounded-lg" />
@@ -802,15 +802,22 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <>
-                  <span className="block max-w-full whitespace-nowrap text-2xl sm:text-3xl xl:text-[1.65rem] 2xl:text-3xl font-extrabold text-slate-800 tabular-nums">
-                    ₹{stats.revenue.toLocaleString('en-IN')}
-                  </span>
-                  <div className="text-[10px] text-slate-500 flex flex-col gap-0.5 mt-2.5 font-semibold">
-                    <div className="text-emerald-600 flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                      <span>Collected: ₹{stats.collected.toLocaleString('en-IN')}</span>
+                  {/* Container-query sizing: the amount scales with the card's width so it never overflows on any device */}
+                  <div className="[container-type:inline-size] w-full">
+                    <span
+                      className="block w-full whitespace-nowrap font-extrabold text-slate-800 tabular-nums leading-tight text-2xl"
+                      style={{ fontSize: 'clamp(1.125rem, 12cqw, 1.875rem)' }}
+                      title={`₹${stats.revenue.toLocaleString('en-IN')}`}
+                    >
+                      ₹{stats.revenue.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="text-[11px] sm:text-xs text-slate-500 flex flex-col gap-0.5 mt-2.5 font-semibold min-w-0">
+                    <div className="text-emerald-600 flex items-center gap-1 min-w-0">
+                      <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Collected: ₹{stats.collected.toLocaleString('en-IN')}</span>
                     </div>
-                    <div className="text-slate-400 pl-[18px]">
+                    <div className="text-slate-400 pl-[18px] truncate">
                       Pending: ₹{stats.pendingPayments.toLocaleString('en-IN')}
                     </div>
                   </div>
