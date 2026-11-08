@@ -707,65 +707,6 @@ export default function Dashboard() {
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">New Quotation</span>
             </a>
-            
-            <div className="relative" ref={profileMenuRef}>
-              <button 
-                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                className="flex items-center gap-1.5 focus:outline-none hover:opacity-85 transition-opacity"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-600 to-stone-700 text-white font-extrabold text-[13px] flex items-center justify-center shadow-md uppercase">
-                  {(user?.name || "U")[0]}
-                </div>
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showProfileDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showProfileDropdown && (
-                <div className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl shadow-xl z-50 overflow-hidden animate-fade-in py-2">
-                  <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-1.5">
-                    <div>
-                      <p className="text-xs font-black text-slate-800 truncate leading-none">{user?.name || "Account"}</p>
-                      <p className="text-[10px] text-slate-400 font-medium truncate mt-1 leading-none">{user?.email || ""}</p>
-                    </div>
-                    <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200/40">
-                      {user?.role || "Designer"}
-                    </span>
-                  </div>
-                  
-                  <div className="p-1">
-                    <button
-                      onClick={() => {
-                        setShowProfileDropdown(false);
-                        setShowProfileModal(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:text-amber-800 hover:bg-amber-50/40 rounded-xl transition-all text-left"
-                    >
-                      <User className="w-4 h-4 text-slate-400" />
-                      My Profile
-                    </button>
-                    
-                    {user?.role === 'Admin' && (
-                      <a
-                        href="/users"
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:text-amber-800 hover:bg-amber-50/40 rounded-xl transition-all text-left"
-                      >
-                        <Users className="w-4 h-4 text-slate-400" />
-                        Users Management
-                      </a>
-                    )}
-                    
-                    <button
-                      onClick={() => {
-                        performLogout("manual");
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all text-left"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Log Out
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </nav>
