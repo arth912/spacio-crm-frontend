@@ -111,7 +111,7 @@ export default function ClientsPage() {
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Clients</h1>
             <p className="text-slate-500 mt-1 text-sm">Everyone you design for, with their projects and contact details.</p>
           </div>
-          <button onClick={() => setForm({ mode: "add" })} className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white font-bold px-5 py-2.5 rounded-xl shadow-md text-sm">
+          <button data-tour="clients-add" onClick={() => setForm({ mode: "add" })} className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white font-bold px-5 py-2.5 rounded-xl shadow-md text-sm">
             <Plus className="w-4 h-4" /> Add client
           </button>
         </div>
@@ -124,6 +124,7 @@ export default function ClientsPage() {
         )}
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
+          <div data-tour="clients-table" className="min-w-0">
           <DataTable
             rows={rows}
             columns={columns}
@@ -136,6 +137,7 @@ export default function ClientsPage() {
             onRowClick={(r) => setSelected(r.id)}
             selectedKey={selected}
           />
+          </div>
           <aside className="bg-white border border-slate-200 rounded-2xl p-5 xl:sticky xl:top-24">
             {current ? (
               <div className="space-y-4">

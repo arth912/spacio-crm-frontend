@@ -1,6 +1,7 @@
 "use client";
 
 import ThemeToggle from "../../components/ThemeToggle";
+import NewMenu from "../../components/NewMenu";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
@@ -12,7 +13,6 @@ import {
   TrendingUp, 
   Download, 
   ArrowRight,
-  Plus,
   User,
   Phone,
   Mail,
@@ -700,13 +700,7 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-3 items-center">
             <ThemeToggle />
-            <a 
-              href="/quotation-builder" 
-              className="flex items-center gap-2 bg-stone-900 hover:bg-stone-850 text-white font-bold px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-205 text-xs sm:text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">New Quotation</span>
-            </a>
+            <NewMenu />
           </div>
         </div>
       </nav>
@@ -720,7 +714,7 @@ export default function Dashboard() {
         </div>
 
         {/* STATS GRID */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-10 animate-fade-in" style={{ animationDelay: '0.1s' }}>
+        <div data-tour="dash-stats" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-10 animate-fade-in" style={{ animationDelay: '0.1s' }}>
           
           {/* Active Projects */}
           <div className="glass-panel rounded-2xl p-5 border border-slate-200/60 bg-gradient-to-br from-white via-white to-amber-50/15 shadow-sm hover:shadow-[0_8px_30px_rgba(217,119,6,0.08)] hover:border-amber-300/80 transition-all duration-300 hover:-translate-y-1">
@@ -1491,7 +1485,7 @@ export default function Dashboard() {
                       required
                       value={profileEmail}
                       onChange={(e) => setProfileEmail(e.target.value)}
-                      placeholder="e.g. contact@yourcompany.com"
+                      placeholder="e.g. hello@withspaceio.in"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>

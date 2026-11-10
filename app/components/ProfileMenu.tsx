@@ -2,8 +2,10 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronUp, UserCircle, Users } from "lucide-react";
+import { ChevronUp, UserCircle, Settings, Compass } from "lucide-react";
 import { readStoredUser, StoredUser } from "../lib/api";
+import { useTour } from "./tour/TourProvider";
+import { TOUR_ACTION_EVENT } from "./tour/events";
 
 /** Avatar row for the bottom of the sidebar. Opens a menu upward with My Profile and user admin. */
 export default function ProfileMenu({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
@@ -11,7 +13,19 @@ export default function ProfileMenu({ collapsed, onNavigate }: { collapsed: bool
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const tour = useTour();
+
   useEffect(() => setUser(readStoredUser()), []);
+
+  // The onboarding tour opens this menu to point at the Tour Guide item.
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const d = (e as CustomEvent<{ type: string; open: boolean }>).detail;
+      if (d?.type === "profile-menu") setOpen(d.open);
+    };
+    window.addEventListener(TOUR_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(TOUR_ACTION_EVENT, onAction);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -32,6 +46,7 @@ export default function ProfileMenu({ collapsed, onNavigate }: { collapsed: bool
   return (
     <div className="relative" ref={ref}>
       <button
+        data-tour="profile-menu"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -48,7 +63,7 @@ export default function ProfileMenu({ collapsed, onNavigate }: { collapsed: bool
         <ChevronUp className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? "" : "rotate-180"} ${collapsed ? "lg:hidden" : ""}`} />
       </button>
       {open && (
-        <div role="menu" className="absolute bottom-full left-0 mb-2 w-60 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
+        <div role="menu" data-tour="profile-menu" className="absolute bottom-full left-0 mb-2 w-60 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100">
             <p className="text-xs font-black text-slate-800 truncate">{name}</p>
             <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{user?.email}</p>
@@ -63,15 +78,25 @@ export default function ProfileMenu({ collapsed, onNavigate }: { collapsed: bool
               <UserCircle className="w-4 h-4 text-slate-400" />
               My Profile
             </Link>
+            {(
+              <button
+                role="menuitem"
+                onClick={() => { setOpen(false); onNavigate?.(); tour.start(); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-amber-50 rounded-xl"
+              >
+                <Compass className="w-4 h-4 text-slate-400" />
+                Tour Guide
+              </button>
+            )}
             {user?.role === "Admin" && (
               <Link
-                href="/users"
+                href="/settings"
                 role="menuitem"
                 onClick={() => { setOpen(false); onNavigate?.(); }}
                 className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-amber-50 rounded-xl"
               >
-                <Users className="w-4 h-4 text-slate-400" />
-                Users management
+                <Settings className="w-4 h-4 text-slate-400" />
+                Settings
               </Link>
             )}
           </div>

@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import SessionGuard from './components/SessionGuard';
+import FeedbackButton from './components/FeedbackButton';
 import ToastProvider from './components/ToastProvider';
 
 export const metadata: Metadata = {
@@ -35,7 +36,10 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/spaceio_logo.png" />
       </head>
       <body className="antialiased">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          {children}
+          <FeedbackButton />
+        </ToastProvider>
         <SessionGuard />
       </body>
     </html>

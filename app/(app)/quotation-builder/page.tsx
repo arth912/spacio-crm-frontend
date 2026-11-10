@@ -1618,25 +1618,25 @@ export default function QuotationBuilder() {
       <main className="max-w-7xl mx-auto px-4 md:px-10 py-8">
 
         {/* COMPACT STICKY CONTROL BAR WITH INTEGRATED TIMELINE */}
-        <div className="mb-8 max-w-2xl mx-auto bg-white/80 backdrop-blur-md border border-slate-200/60 p-2.5 rounded-full shadow-sm flex items-center justify-between gap-4 animate-fade-in">
+        <div data-tour="builder-stepper" className="mb-6 sm:mb-8 w-full max-w-2xl mx-auto bg-white/80 backdrop-blur-md border border-slate-200/60 p-2 sm:p-2.5 rounded-full shadow-sm flex items-center justify-between gap-2 sm:gap-4 animate-fade-in overflow-hidden">
           {/* Back Button Container */}
-          <div className="w-24 shrink-0 flex justify-start">
+          <div className="w-9 sm:w-24 shrink-0 flex justify-start">
             <button
               type="button"
               onClick={() => setStep((prev) => (prev - 1) as 1 | 2 | 3 | 4)}
-              className={`w-full flex items-center justify-center gap-1 px-3 h-8 rounded-full border border-slate-200 bg-white text-slate-600 hover:text-amber-800 hover:border-amber-200 hover:bg-slate-50/50 shadow-sm transition-all group ${
+              className={`w-full flex items-center justify-center gap-1 px-0 sm:px-3 h-9 sm:h-8 rounded-full border border-slate-200 bg-white text-slate-600 hover:text-amber-800 hover:border-amber-200 hover:bg-slate-50/50 shadow-sm transition-all group ${
                 step > 1 ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
               }`}
               title="Go back a step"
               aria-label="Go back a step"
             >
               <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              <span className="font-bold text-[11px]">Back</span>
+              <span className="font-bold text-[11px] hidden sm:inline">Back</span>
             </button>
           </div>
 
           {/* Small Timeline */}
-          <div className="flex-1 relative px-3.5">
+          <div className="flex-1 min-w-0 relative px-3.5">
             {/* Background line */}
             <div className="absolute left-7 right-7 top-3.5 h-0.5 bg-slate-200/80 z-0" />
             {/* Active line */}
@@ -1661,6 +1661,7 @@ export default function QuotationBuilder() {
                 return (
                   <div 
                     key={s.num}
+                    data-tour={`builder-step-${s.num}`}
                     onClick={() => {
                       if (s.num > 1) {
                         if (!validateStep1()) return;
@@ -1698,7 +1699,7 @@ export default function QuotationBuilder() {
           </div>
 
           {/* Next Button Container */}
-          <div className="w-24 shrink-0 flex justify-end">
+          <div className="w-9 sm:w-24 shrink-0 flex justify-end">
             <button
               type="button"
               onClick={() => {
@@ -1714,13 +1715,13 @@ export default function QuotationBuilder() {
                 (step === 2 && rooms.length === 0) ||
                 (step === 3 && selectedItems.length === 0)
               }
-              className={`step-next w-full flex items-center justify-center gap-1 px-3 h-8 rounded-full bg-gradient-to-r from-stone-950 to-stone-900 hover:from-stone-900 hover:to-stone-800 text-white font-bold text-[11px] shadow-sm hover:shadow transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none ${
+              className={`step-next w-full flex items-center justify-center gap-1 px-0 sm:px-3 h-9 sm:h-8 rounded-full bg-gradient-to-r from-stone-950 to-stone-900 hover:from-stone-900 hover:to-stone-800 text-white font-bold text-[11px] shadow-sm hover:shadow transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none ${
                 step < 4 ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
               }`}
               title={step === 3 ? "Review estimate" : "Go to next step"}
               aria-label={step === 3 ? "Review estimate" : "Go to next step"}
             >
-              <span>{step === 3 ? "Review" : "Next"}</span>
+              <span className="hidden sm:inline">{step === 3 ? "Review" : "Next"}</span>
               <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
@@ -1728,7 +1729,7 @@ export default function QuotationBuilder() {
 
         {/* ==================== STEP 1: PROJECT ==================== */}
         {step === 1 && (
-          <div className="glass-panel rounded-2xl p-6 md:p-8 shadow-card border border-slate-200/50 animate-fade-in">
+          <div data-tour="builder-panel" className="glass-panel rounded-2xl p-6 md:p-8 shadow-card border border-slate-200/50 animate-fade-in">
             <div className="mb-6">
               <span className="text-xs text-amber-700 font-bold uppercase tracking-wider">Step 1 of 4</span>
               <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-1">Project Registry</h2>
@@ -1859,7 +1860,7 @@ export default function QuotationBuilder() {
                       setClientEmail(e.target.value);
                       setSelectedClientId("new");
                     }}
-                    placeholder="e.g. rajesh@gmail.com"
+                    placeholder="e.g. hello@withspaceio.in"
                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 placeholder-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                   />
                 </div>
@@ -3071,7 +3072,7 @@ export default function QuotationBuilder() {
                       required
                       value={profileEmail}
                       onChange={(e) => setProfileEmail(e.target.value)}
-                      placeholder="e.g. contact@yourcompany.com"
+                      placeholder="e.g. hello@withspaceio.in"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>

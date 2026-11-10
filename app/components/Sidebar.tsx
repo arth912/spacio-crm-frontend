@@ -56,6 +56,7 @@ export default function Sidebar({ collapsed, mobileOpen, onToggleCollapse, onClo
       <Link
         key={item.href}
         href={item.href}
+        data-tour={`nav-${item.href.slice(1)}`}
         onClick={onCloseMobile}
         title={collapsed ? item.label : undefined}
         aria-current={active ? "page" : undefined}
