@@ -31,6 +31,7 @@ export default function NewMenu() {
   return (
     <div className="relative" ref={ref}>
       <button
+        data-tour="new-menu"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}

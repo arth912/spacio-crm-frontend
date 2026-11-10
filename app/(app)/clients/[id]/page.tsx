@@ -1924,7 +1924,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
                       required
                       value={profileEmail}
                       onChange={(e) => setProfileEmail(e.target.value)}
-                      placeholder="e.g. contact@yourcompany.com"
+                      placeholder="e.g. hello@withspaceio.in"
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>

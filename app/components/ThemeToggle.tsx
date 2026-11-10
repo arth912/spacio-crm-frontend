@@ -22,6 +22,7 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
+      data-tour="theme-toggle"
       title={label}
       aria-label={label}
       className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"

@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Info, Loader2 } from "lucide-react";
+import { Compass, Info, Loader2 } from "lucide-react";
 import TopBar from "../../components/TopBar";
 import BillingTemplatePicker from "../../components/BillingTemplatePicker";
 import { useToast } from "../../components/ToastProvider";
+import { useTour } from "../../components/tour/TourProvider";
 import { api, readStoredUser, storeUser, StoredUser } from "../../lib/api";
 import { TemplateId, TEMPLATES, templateName } from "../../lib/billing";
 
@@ -25,6 +26,7 @@ const isTemplate = (v?: string): v is TemplateId => TEMPLATES.some((t) => t.id =
 
 export default function ProfilePage() {
   const toast = useToast();
+  const tour = useTour();
   const [tab, setTab] = useState<Tab>("billing");
   const [user, setUser] = useState<StoredUser | null>(null);
   const [saving, setSaving] = useState(false);
@@ -102,8 +104,21 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/20">
       <TopBar />
       <main className="max-w-6xl mx-auto px-4 md:px-10 py-6 md:py-8">
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">My Profile</h1>
-        <p className="text-slate-500 mt-1 text-sm">Manage your account, business details and the template used for your bills.</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">My Profile</h1>
+            <p className="text-slate-500 mt-1 text-sm">Manage your account, business details and the template used for your bills.</p>
+          </div>
+          {(
+            <button
+              type="button"
+              onClick={tour.start}
+              className="inline-flex items-center gap-2 h-11 px-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm font-bold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              <Compass className="w-4 h-4 text-amber-700" /> Tour guide
+            </button>
+          )}
+        </div>
 
         <div role="tablist" aria-label="Profile sections" className="mt-6 flex gap-6 border-b border-slate-200 overflow-x-auto">
           {TABS.map((t) => (

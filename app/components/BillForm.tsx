@@ -205,7 +205,7 @@ export default function BillForm({ initial }: { initial?: Bill }) {
           </div>
         )}
 
-        <section className={card} aria-labelledby="cust-h">
+        <section data-tour="bill-customer" className={card} aria-labelledby="cust-h">
           <h2 id="cust-h" className="text-base font-extrabold text-slate-900 mb-4">Customer details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -250,7 +250,7 @@ export default function BillForm({ initial }: { initial?: Bill }) {
           </div>
         </section>
 
-        <section className={card} aria-labelledby="items-h">
+        <section data-tour="bill-items" className={card} aria-labelledby="items-h">
           <h2 id="items-h" className="text-base font-extrabold text-slate-900">Billing items</h2>
           <p className="text-[13px] text-slate-500 mt-0.5 mb-4">Name each item and bill it per piece, per sq ft or per running ft, as in estimations</p>
           <datalist id="bill-catalog">{catalog.map((c) => <option key={c.id} value={c.name} />)}</datalist>
@@ -348,7 +348,7 @@ export default function BillForm({ initial }: { initial?: Bill }) {
           </p>
         </section>
 
-        <section className={card} aria-labelledby="sum-h">
+        <section data-tour="bill-summary" className={card} aria-labelledby="sum-h">
           <h2 id="sum-h" className="text-base font-extrabold text-slate-900 mb-4">Summary</h2>
           <dl className="space-y-2.5 text-sm">
             <div className="flex justify-between"><dt className="text-slate-500">Subtotal</dt><dd className="font-semibold text-slate-800 tabular-nums">{money(totals.subtotal)}</dd></div>

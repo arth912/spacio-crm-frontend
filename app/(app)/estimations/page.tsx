@@ -97,7 +97,7 @@ export default function EstimationsPage() {
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Estimations</h1>
             <p className="text-slate-500 mt-1 text-sm">Every estimate you have made, with its status and total.</p>
           </div>
-          <Link href="/quotation-builder" className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white font-bold px-5 py-2.5 rounded-xl shadow-md text-sm">
+          <Link href="/quotation-builder" data-tour="estimate-new" className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white font-bold px-5 py-2.5 rounded-xl shadow-md text-sm">
             <Plus className="w-4 h-4" /> New estimation
           </Link>
         </div>
@@ -108,7 +108,7 @@ export default function EstimationsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <div data-tour="estimate-status" className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           {["draft", "sent", "approved", "rejected"].map((s) => (
             <button key={s} onClick={() => setStatus(status === s ? "all" : s)} aria-pressed={status === s}
               className={`text-left bg-white border rounded-2xl px-4 py-3 ${status === s ? "border-amber-400 ring-2 ring-amber-500/15" : "border-slate-200 hover:border-slate-300"}`}>

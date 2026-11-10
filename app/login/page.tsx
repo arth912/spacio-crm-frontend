@@ -761,7 +761,7 @@ function LoginFormContent() {
                       value={email}
                       onValueChange={setEmail}
                       onLiveChange={live('email')}
-                      placeholder="e.g. designer@spaceio.com"
+                      placeholder="e.g. hello@withspaceio.in"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                     />
                   </div>
@@ -952,7 +952,7 @@ function LoginFormContent() {
                           value={email}
                           onValueChange={setEmail}
                           onLiveChange={live('email')}
-                          placeholder="e.g. designer@spaceio.com"
+                          placeholder="e.g. hello@withspaceio.in"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
                       </div>
@@ -1046,7 +1046,7 @@ function LoginFormContent() {
                           value={email}
                           onValueChange={setEmail}
                           onLiveChange={live('email')}
-                          placeholder="e.g. designer@spaceio.com"
+                          placeholder="e.g. hello@withspaceio.in"
                           className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-700 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all outline-none"
                         />
                       </div>

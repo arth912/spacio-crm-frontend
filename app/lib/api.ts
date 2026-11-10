@@ -51,6 +51,7 @@ export interface StoredUser {
   signature?: string | null;
   stamp?: string | null;
   billing_template?: string;
+  tour_completed?: boolean;
 }
 
 export function storeUser(user: StoredUser) {

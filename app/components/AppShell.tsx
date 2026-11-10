@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import { getToken } from "../lib/session";
+import { TourProvider } from "./tour/TourProvider";
+import { CLOSE_SIDEBAR_EVENT } from "./tour/events";
 
 const COLLAPSE_KEY = "spacio-sidebar-collapsed";
 export const TOGGLE_SIDEBAR_EVENT = "spacio:toggle-sidebar";
@@ -21,8 +23,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
     } catch {}
     const open = () => setMobileOpen(true);
+    const close = () => setMobileOpen(false);
     window.addEventListener(TOGGLE_SIDEBAR_EVENT, open);
-    return () => window.removeEventListener(TOGGLE_SIDEBAR_EVENT, open);
+    window.addEventListener(CLOSE_SIDEBAR_EVENT, close);
+    return () => {
+      window.removeEventListener(TOGGLE_SIDEBAR_EVENT, open);
+      window.removeEventListener(CLOSE_SIDEBAR_EVENT, close);
+    };
   }, []);
 
   const toggleCollapse = () => {
@@ -35,6 +42,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    <TourProvider>
     <div className="min-h-screen">
       <Sidebar
         collapsed={collapsed}
@@ -44,5 +52,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       />
       <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-[76px]" : "lg:pl-64"}`}>{children}</div>
     </div>
+    </TourProvider>
   );
 }

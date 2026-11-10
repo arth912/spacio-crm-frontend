@@ -87,7 +87,7 @@ export default function BillingPage() {
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Billing</h1>
             <p className="text-slate-500 mt-1 text-sm">Bills you have drafted or generated, and how much of each is paid.</p>
           </div>
-          <Link href="/billing/new" className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white font-bold px-5 h-11 rounded-xl shadow-md text-sm">
+          <Link href="/billing/new" data-tour="billing-new" className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white font-bold px-5 h-11 rounded-xl shadow-md text-sm">
             <Plus className="w-4 h-4" />New billing
           </Link>
         </div>
