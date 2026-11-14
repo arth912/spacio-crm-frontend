@@ -7,6 +7,8 @@ import { getToken } from "../../lib/session";
 import { CLOSE_SIDEBAR_EVENT, OPEN_SIDEBAR_EVENT, TourOpenable, dispatchTourAction } from "./events";
 import { TOUR_STEPS, TourStep } from "./steps";
 
+interface ClientRow { id: string }
+
 interface TourContextValue {
   /** Start the tour from the first step. */
   start: () => void;
@@ -54,9 +56,15 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const nextRef = useRef<HTMLButtonElement>(null);
   const openedRef = useRef<TourOpenable | null>(null);
   const autoRef = useRef(false);
+  const [clientId, setClientId] = useState<string | null>(null);
 
-  const step: TourStep = TOUR_STEPS[index];
-  const last = index === TOUR_STEPS.length - 1;
+  // Client-page steps need a real client; without one they are left out.
+  const steps = useMemo<TourStep[]>(
+    () => TOUR_STEPS.filter((s) => !s.client || clientId).map((s) => (s.client ? { ...s, route: `/clients/${clientId}` } : s)),
+    [clientId],
+  );
+  const step: TourStep = steps[Math.min(index, steps.length - 1)];
+  const last = index === steps.length - 1;
 
   const markDone = useCallback(() => {
     const u = readStoredUser();
@@ -78,9 +86,14 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, [closeOpened, markDone]);
 
   const start = useCallback(() => {
-    setIndex(0);
-    setRect(null);
-    setActive(true);
+    api<ClientRow[]>("/clients")
+      .then((rows) => setClientId(rows[0]?.id ?? null))
+      .catch(() => setClientId(null))
+      .finally(() => {
+        setIndex(0);
+        setRect(null);
+        setActive(true);
+      });
   }, []);
 
   // First login: start once for regular users who have not seen the tour.
@@ -160,7 +173,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { if (active) nextRef.current?.focus(); }, [active, index]);
 
-  const go = useCallback((n: number) => setIndex(Math.max(0, Math.min(TOUR_STEPS.length - 1, n))), []);
+  const go = useCallback((n: number) => setIndex(Math.max(0, Math.min(steps.length - 1, n))), [steps.length]);
   const next = useCallback(() => (last ? finish() : go(index + 1)), [last, finish, go, index]);
 
   useEffect(() => {
@@ -235,13 +248,13 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             style={{ left: tipPos.left, top: tipPos.top, width: tipPos.width ?? TIP_W, maxWidth: "calc(100vw - 24px)" }}
           >
             <div className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider">
-              <span className="text-amber-700">{welcome ? "Getting started" : `Step ${index} of ${TOUR_STEPS.length - 1}`}</span>
+              <span className="text-amber-700">{welcome ? "Getting started" : `Step ${index} of ${steps.length - 1}`}</span>
               <span className="text-slate-400">{welcome ? "" : step.tag}</span>
             </div>
             <h2 id="tour-title" className="mt-1.5 text-lg font-extrabold tracking-tight text-slate-900">{step.title}</h2>
             <p className="mt-1 text-sm leading-relaxed text-slate-500">{step.body}</p>
             <div className="flex gap-[3px] my-4" aria-hidden="true">
-              {TOUR_STEPS.map((_, i) => (
+              {steps.map((_, i) => (
                 <span key={i} className={`h-1.5 flex-1 rounded-full ${i === index ? "bg-amber-600" : i < index ? "bg-amber-600/40" : "bg-slate-200"}`} />
               ))}
             </div>

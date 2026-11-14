@@ -110,6 +110,7 @@ function LoginFormContent() {
   const [logo, setLogo] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly');
   const [unpaidPaymentInfo, setUnpaidPaymentInfo] = useState<any>(null);
+  const [couponCode, setCouponCode] = useState("");
 
   // New OTP & Password Reset Inputs
   const [otpCode, setOtpCode] = useState("");
@@ -199,11 +200,42 @@ function LoginFormContent() {
           razorpay_order_id: data.razorpay_order_id
         }));
       } else {
-        setErrorMsg(data.detail || "Failed to update plan selection.");
+        setErrorMsg(errText(data.detail, "Failed to update plan selection."));
       }
     } catch (err) {
       console.error("Plan switch error:", err);
       setErrorMsg("Connection error while updating plan selection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRedeemCoupon = async () => {
+    if (!unpaidPaymentInfo || !couponCode.trim()) return;
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/redeem-coupon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: unpaidPaymentInfo.user_id, code: couponCode.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.removeItem("decocrm_auth_token");
+        localStorage.removeItem("decocrm_user");
+        setUnpaidPaymentInfo(null);
+        setCouponCode("");
+        setAuthView('auth');
+        setActiveTab('login');
+        setSuccessMsg("🎉 Coupon applied! You now have 2 months of free access to all features. Please sign in to continue.");
+      } else {
+        setErrorMsg(errText(data.detail, "Could not apply this coupon."));
+      }
+    } catch (err) {
+      console.error("Coupon redeem error:", err);
+      setErrorMsg("Connection error while applying the coupon.");
     } finally {
       setLoading(false);
     }
@@ -255,7 +287,7 @@ function LoginFormContent() {
               setSuccessMsg("🎉 Payment verified & plan activated! Confirmation email with plan details has been sent. Please log in to continue.");
               router.push('/login');
             } else {
-              setErrorMsg(verifyData.detail || "Payment verification failed. Please contact support.");
+              setErrorMsg(errText(verifyData.detail, "Payment verification failed. Please contact support."));
             }
           } catch (err) {
             console.error("Verification error:", err);
@@ -332,7 +364,7 @@ function LoginFormContent() {
             setErrorMsg("Your email address is unverified. Please complete verification.");
             setAuthView('verify_email');
           } else {
-            setErrorMsg(data.detail || "Invalid email or password. Please try again.");
+            setErrorMsg(errText(data.detail, "Invalid email or password. Please try again."));
           }
         }
       } else {
@@ -354,7 +386,7 @@ function LoginFormContent() {
           setSuccessMsg("Registration successful! A 6-digit verification code has been sent to your email.");
           setAuthView('verify_email');
         } else {
-          setErrorMsg(data.detail || "Registration failed. Email might already exist.");
+          setErrorMsg(errText(data.detail, "Registration failed. Email might already exist."));
         }
       }
     } catch (err) {
@@ -381,7 +413,7 @@ function LoginFormContent() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || "Invalid or expired verification code.");
+        throw new Error(errText(data.detail, "Invalid or expired verification code."));
       }
 
       setSuccessMsg("Email address verified! Launching subscription payment overlay...");
@@ -436,7 +468,7 @@ function LoginFormContent() {
               setAuthView('auth');
               router.replace(redirectPath);
             } else {
-              setErrorMsg(verifyData.detail || "Payment verification failed. Please contact support.");
+              setErrorMsg(errText(verifyData.detail, "Payment verification failed. Please contact support."));
             }
           } catch (err) {
             console.error("Verification error:", err);
@@ -487,7 +519,7 @@ function LoginFormContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || "Failed to submit password reset request.");
+        throw new Error(errText(data.detail, "Failed to submit password reset request."));
       }
       setSuccessMsg("Password reset code triggered! If your email is registered, you will receive a code.");
       setAuthView('forgot_confirm');
@@ -521,7 +553,7 @@ function LoginFormContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || "Failed to reset password.");
+        throw new Error(errText(data.detail, "Failed to reset password."));
       }
       setSuccessMsg("Password has been reset successfully! Please sign in with your new password.");
       setAuthView('auth');
@@ -667,6 +699,32 @@ function LoginFormContent() {
                   )}
                 </button>
                 
+                <div className="border-t border-slate-200/60 pt-3">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Have a coupon code?
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      maxLength={50}
+                      placeholder="Enter coupon code"
+                      disabled={loading}
+                      className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRedeemCoupon}
+                      disabled={loading || !couponCode.trim()}
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold disabled:opacity-50 transition-colors"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-semibold mt-1.5">Valid coupons unlock all features free for 2 months.</p>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1220,6 +1278,16 @@ function LoginFormContent() {
     </div>
   );
 }
+
+// FastAPI returns `detail` as a string, or as an array of validation errors (422): always render text.
+const errText = (detail: any, fallback: string): string => {
+  if (typeof detail === 'string' && detail) return detail;
+  if (Array.isArray(detail) && detail[0]?.msg) {
+    const field = Array.isArray(detail[0].loc) ? String(detail[0].loc[detail[0].loc.length - 1]) : '';
+    return field ? `${field}: ${detail[0].msg}` : String(detail[0].msg);
+  }
+  return fallback;
+};
 
 export default function LoginPage() {
   return (

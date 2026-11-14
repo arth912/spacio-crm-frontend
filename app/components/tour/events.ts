@@ -4,7 +4,7 @@ export const TOUR_ACTION_EVENT = "spacio:tour-action";
 export const OPEN_SIDEBAR_EVENT = "spacio:toggle-sidebar";
 export const CLOSE_SIDEBAR_EVENT = "spacio:close-sidebar";
 
-export type TourOpenable = "item-form" | "profile-menu";
+export type TourOpenable = "item-form" | "profile-menu" | "payment-form";
 
 export function dispatchTourAction(type: TourOpenable, open: boolean) {
   window.dispatchEvent(new CustomEvent(TOUR_ACTION_EVENT, { detail: { type, open } }));

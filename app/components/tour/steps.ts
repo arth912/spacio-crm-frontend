@@ -5,6 +5,8 @@ export type TourSide = "right" | "left" | "bottom" | "top";
 export interface TourStep {
   /** Page the step lives on. Omit to stay where the user is. */
   route?: string;
+  /** Step lives on the detail page of the user's first client; skipped when they have no clients. */
+  client?: boolean;
   /** Value of the `data-tour` attribute to light up. Omit for a centred card. */
   target?: string;
   tag: string;
@@ -47,6 +49,31 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/clients", target: "clients-table", tag: "Clients", side: "top",
     title: "Search and open a client",
     body: "Search by name or phone. Click a row to see that client's projects, estimates and payments.",
+  },
+  {
+    client: true, target: "client-profile", tag: "Clients", side: "bottom",
+    title: "A client's page",
+    body: "Opening a client shows their contact details, address and the status of their current project.",
+  },
+  {
+    client: true, target: "client-projects", tag: "Clients", side: "top",
+    title: "Projects and estimates",
+    body: "Every project for this client, with its estimates, budget and status. Update a project's status here as the job moves along.",
+  },
+  {
+    client: true, target: "client-payments", tag: "Payments", side: "top",
+    title: "Billing and payment tracking",
+    body: "Everything this client has paid, project by project, along with what is still due.",
+  },
+  {
+    client: true, target: "client-record-payment", tag: "Payments", side: "left",
+    title: "Record a received payment",
+    body: "Press this button whenever the client pays you, whether it is an advance or a part payment.",
+  },
+  {
+    client: true, target: "client-payment-form", open: "payment-form", tag: "Payments", side: "top",
+    title: "Enter the payment details",
+    body: "Choose the project, enter the amount, date and method (cash or wire transfer), and apply it to a bill if you like. Nothing is saved during the tour.",
   },
   {
     route: "/catalogue", target: "nav-catalogue", tag: "Catalogue", side: "right",

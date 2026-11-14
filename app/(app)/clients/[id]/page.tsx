@@ -30,6 +30,7 @@ import { useToast } from '../../../components/ToastProvider';
 import SpaceLoader from '../../../components/SpaceLoader';
 import { PageSkeleton } from '../../../components/Skeleton';
 import { performLogout } from "../../../lib/session";
+import { TOUR_ACTION_EVENT } from "../../../components/tour/events";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -315,6 +316,15 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [payments, setPayments] = useState<any[]>([]);
   const [showAddPaymentForm, setShowAddPaymentForm] = useState(false);
+  // The onboarding tour opens and closes the Record Received Payment form to point at its fields.
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const t = (e as CustomEvent<{ type: string; open: boolean }>).detail;
+      if (t?.type === "payment-form") setShowAddPaymentForm(!!t.open);
+    };
+    window.addEventListener(TOUR_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(TOUR_ACTION_EVENT, onAction);
+  }, []);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Wire Transfer'>('Cash');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1095,7 +1105,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
       <main className="max-w-6xl mx-auto px-4 py-10">
         
         {/* Profile Card */}
-        <div className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">
+        <div data-tour="client-profile" className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">
           <div className="absolute top-0 right-0 w-64 h-64 bg-amber-100/20 rounded-full blur-3xl -z-10" />
           
           {/* Header: Client & Project Info */}
@@ -1246,7 +1256,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
         </div>
 
         {/* All Projects of this client */}
-        <div className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">
+        <div data-tour="client-projects" className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
             <div>
               <h3 className="text-lg font-black text-slate-800">Client Projects</h3>
@@ -1448,7 +1458,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
         </div>
 
         {/* Financial Tracking & Payments Card */}
-        <div className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">
+        <div data-tour="client-payments" className="glass-panel border border-amber-200/60 rounded-3xl p-6 md:p-8 shadow-card relative overflow-hidden bg-white/40 mb-10">
           <div className="absolute top-0 right-0 w-64 h-64 bg-amber-100/20 rounded-full blur-3xl -z-10" />
           
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
@@ -1459,6 +1469,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
             
             {projects.length > 0 && (
               <button
+                data-tour="client-record-payment"
                 onClick={() => {
                   if (!showAddPaymentForm) {
                     if (activeProjectId !== 'all') {
@@ -1637,7 +1648,7 @@ export default function ClientProfile({ params }: { params: { id: string } }) {
 
                 {/* RECORD TRANSACTION FORM */}
                 {showAddPaymentForm && (
-                  <form onSubmit={handleAddPayment} className="border border-amber-100 bg-amber-50/10 p-5 rounded-2xl space-y-4 animate-fade-in bg-white shadow">
+                  <form data-tour="client-payment-form" onSubmit={handleAddPayment} className="border border-amber-100 bg-amber-50/10 p-5 rounded-2xl space-y-4 animate-fade-in bg-white shadow">
                     <h4 className="text-xs uppercase font-extrabold text-amber-700 tracking-wider">Record Received Payment</h4>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
