@@ -111,6 +111,10 @@ function LoginFormContent() {
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly');
   const [unpaidPaymentInfo, setUnpaidPaymentInfo] = useState<any>(null);
   const [couponCode, setCouponCode] = useState("");
+  // true = show the coupon page first; false = plan selection / payment (after "Continue without coupon")
+  const [couponStep, setCouponStep] = useState(true);
+  // Discount coupon accepted on the coupon page (free coupons are redeemed immediately instead)
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_percent: number; days: number } | null>(null);
 
   // New OTP & Password Reset Inputs
   const [otpCode, setOtpCode] = useState("");
@@ -177,37 +181,15 @@ function LoginFormContent() {
     }
   }, [router, redirectPath]);
 
-  const handleChangePlan = async (newPlan: 'monthly' | 'yearly') => {
+  // Plan switch is local only; the Razorpay order is created when the user clicks Pay.
+  const handleChangePlan = (newPlan: 'monthly' | 'yearly') => {
     if (!unpaidPaymentInfo) return;
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/create-subscription-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: unpaidPaymentInfo.user_id,
-          selected_plan: newPlan
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUnpaidPaymentInfo((prev: any) => ({
-          ...prev,
-          ...data,
-          plan: newPlan,
-          amount: data.amount,
-          razorpay_order_id: data.razorpay_order_id
-        }));
-      } else {
-        setErrorMsg(errText(data.detail, "Failed to update plan selection."));
-      }
-    } catch (err) {
-      console.error("Plan switch error:", err);
-      setErrorMsg("Connection error while updating plan selection.");
-    } finally {
-      setLoading(false);
-    }
+    setUnpaidPaymentInfo((prev: any) => ({
+      ...prev,
+      plan: newPlan,
+      amount: Math.floor((newPlan === 'monthly' ? 49900 : 499900) * (100 - (appliedCoupon?.discount_percent ?? 0)) / 100),
+      razorpay_order_id: null,
+    }));
   };
 
   const handleRedeemCoupon = async () => {
@@ -216,6 +198,27 @@ function LoginFormContent() {
     setErrorMsg("");
     setSuccessMsg("");
     try {
+      const valRes = await fetch(`${API_BASE_URL}/auth/validate-coupon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: unpaidPaymentInfo.user_id, code: couponCode.trim(), selected_plan: unpaidPaymentInfo.plan || 'monthly' })
+      });
+      const val = await valRes.json();
+      if (!valRes.ok) {
+        setErrorMsg(errText(val.detail, "Could not apply this coupon."));
+        return;
+      }
+
+      if (!val.is_free) {
+        // Partial discount: go to the payment step with the discounted price
+        setAppliedCoupon({ code: val.code, discount_percent: val.discount_percent, days: val.days });
+        setUnpaidPaymentInfo((prev: any) => ({ ...prev, amount: val.amount, razorpay_order_id: null }));
+        setCouponStep(false);
+        setSuccessMsg(`Coupon ${val.code} applied: ${val.discount_percent}% off, ${val.days} days of access.`);
+        return;
+      }
+
+      // 100% off: redeem now, no payment needed
       const res = await fetch(`${API_BASE_URL}/auth/redeem-coupon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -223,13 +226,14 @@ function LoginFormContent() {
       });
       const data = await res.json();
       if (res.ok) {
-        localStorage.removeItem("decocrm_auth_token");
-        localStorage.removeItem("decocrm_user");
+        localStorage.setItem("decocrm_auth_token", data.access_token);
+        localStorage.setItem("decocrm_user", JSON.stringify(data.user));
+        localStorage.setItem("decocrm_last_active", String(Date.now()));
         setUnpaidPaymentInfo(null);
         setCouponCode("");
         setAuthView('auth');
-        setActiveTab('login');
-        setSuccessMsg("🎉 Coupon applied! You now have 2 months of free access to all features. Please sign in to continue.");
+        setSuccessMsg(`🎉 Coupon applied! You have ${val.days} days of free access to all features. Redirecting...`);
+        router.replace(redirectPath);
       } else {
         setErrorMsg(errText(data.detail, "Could not apply this coupon."));
       }
@@ -253,14 +257,27 @@ function LoginFormContent() {
         return;
       }
       
+      // Razorpay is only called now, after the coupon step was skipped.
+      const orderRes = await fetch(`${API_BASE_URL}/auth/create-subscription-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: payInfo.user_id, selected_plan: payInfo.plan, coupon_code: appliedCoupon?.code || null })
+      });
+      const order = await orderRes.json();
+      if (!orderRes.ok) {
+        setErrorMsg(errText(order.detail, "Failed to create payment order. Please try again."));
+        setLoading(false);
+        return;
+      }
+
       const options = {
-        key: payInfo.razorpay_key_id,
-        amount: payInfo.amount,
+        key: order.razorpay_key_id,
+        amount: order.amount,
         currency: "INR",
         name: "SpaceIO CRM",
         description: `${payInfo.plan === 'monthly' ? 'Monthly' : 'Yearly'} Plan Subscription`,
         image: "/spaceio_logo.png",
-        order_id: payInfo.razorpay_order_id,
+        order_id: order.razorpay_order_id,
         handler: async function (response: any) {
           setLoading(true);
           try {
@@ -278,14 +295,13 @@ function LoginFormContent() {
             
             const verifyData = await verifyRes.json();
             if (verifyRes.ok) {
-              // Reset auth state & redirect to login view
-              localStorage.removeItem("decocrm_auth_token");
-              localStorage.removeItem("decocrm_user");
+              localStorage.setItem("decocrm_auth_token", verifyData.access_token);
+              localStorage.setItem("decocrm_user", JSON.stringify(verifyData.user));
+              localStorage.setItem("decocrm_last_active", String(Date.now()));
               setUnpaidPaymentInfo(null);
               setAuthView('auth');
-              setActiveTab('login');
-              setSuccessMsg("🎉 Payment verified & plan activated! Confirmation email with plan details has been sent. Please log in to continue.");
-              router.push('/login');
+              setSuccessMsg("🎉 Payment verified & plan activated! Redirecting...");
+              router.replace(redirectPath);
             } else {
               setErrorMsg(errText(verifyData.detail, "Payment verification failed. Please contact support."));
             }
@@ -355,14 +371,21 @@ function LoginFormContent() {
         } else {
           if (res.status === 402 && data.detail && (data.detail.error === "payment_pending" || data.detail.error === "access_expired")) {
             setUnpaidPaymentInfo(data.detail);
+            setAppliedCoupon(null);
+            setCouponStep(true);
             if (data.detail.error === "access_expired") {
-              setErrorMsg("Your account access has expired! Please select a plan (Monthly or Yearly) below to complete payment and renew access.");
+              setErrorMsg("Your account access has expired! Apply a coupon code or continue to renew your plan.");
             } else {
-              setErrorMsg("Payment pending! Please complete your subscription payment to activate your account.");
+              setErrorMsg("Payment pending! Apply a coupon code or continue to complete your subscription payment.");
             }
           } else if (res.status === 403 && data.detail === "email_unverified") {
-            setErrorMsg("Your email address is unverified. Please complete verification.");
+            setErrorMsg("Your email address is unverified. We've sent a new verification code to your email.");
             setAuthView('verify_email');
+            fetch(`${API_BASE_URL}/auth/resend-verification`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email }),
+            }).catch(() => {});
           } else {
             setErrorMsg(errText(data.detail, "Invalid email or password. Please try again."));
           }
@@ -399,7 +422,7 @@ function LoginFormContent() {
 
   const handleVerifyEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { email, password, name, phone, logo, otpCode } = valuesRef.current;
+    const { email, otpCode } = valuesRef.current;
     setLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -416,87 +439,16 @@ function LoginFormContent() {
         throw new Error(errText(data.detail, "Invalid or expired verification code."));
       }
 
-      setSuccessMsg("Email address verified! Launching subscription payment overlay...");
-      
-      const loaded = await loadRazorpayScript();
-      if (!loaded) {
-        setErrorMsg("Failed to load Razorpay checkout script. Please check your internet connection.");
-        setLoading(false);
-        return;
-      }
-
-      const options = {
-        key: data.razorpay_key_id,
-        amount: data.amount,
-        currency: data.currency,
-        name: "SpaceIO CRM",
-        description: `${selectedPlan === 'monthly' ? 'Monthly' : 'Yearly'} Plan Subscription`,
-        image: "/spaceio_logo.png",
-        order_id: data.razorpay_order_id,
-        handler: async function (response: any) {
-          setLoading(true);
-          try {
-            const verifyRes = await fetch(`${API_BASE_URL}/auth/verify-payment`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user_id: data.user_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature,
-                name: name,
-                email: email,
-                password: password,
-                phone: phone,
-                company_logo: logo || null,
-                selected_plan: selectedPlan
-              })
-            });
-            
-            const verifyData = await verifyRes.json();
-            if (verifyRes.ok) {
-              localStorage.setItem("decocrm_auth_token", verifyData.access_token);
-              localStorage.setItem("decocrm_user", JSON.stringify(verifyData.user));
-              setSuccessMsg("Payment verified! Account activated successfully. Redirecting...");
-              resetFields('name', 'email', 'password', 'phone', 'logo', 'otpCode');
-              setName("");
-              setEmail("");
-              setPassword("");
-              setPhone("");
-              setLogo("");
-              setOtpCode("");
-              setAuthView('auth');
-              router.replace(redirectPath);
-            } else {
-              setErrorMsg(errText(verifyData.detail, "Payment verification failed. Please contact support."));
-            }
-          } catch (err) {
-            console.error("Verification error:", err);
-            setErrorMsg("Payment verification server connection failed.");
-          } finally {
-            setLoading(false);
-          }
-        },
-        prefill: {
-          name: name,
-          email: email,
-          contact: phone
-        },
-        theme: {
-          color: "#1c1917"
-        },
-        modal: {
-          ondismiss: function() {
-            setErrorMsg("Subscription registration payment was cancelled. You can sign in to complete payment later.");
-            setLoading(false);
-            setAuthView('auth');
-            setActiveTab('login');
-          }
-        }
-      };
-      
-      const rzp = new (window as any).Razorpay(options);
-      rzp.open();
+      // Email verified: show the coupon page. Razorpay is called only if the user continues without a coupon.
+      setUnpaidPaymentInfo({ ...data, error: "payment_pending" });
+      setCouponStep(true);
+      setCouponCode("");
+      resetFields('password', 'otpCode');
+      setPassword("");
+      setOtpCode("");
+      setAuthView('auth');
+      setActiveTab('login');
+      setSuccessMsg("Email address verified! Apply a coupon code or continue to payment.");
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to verify email code.");
     } finally {
@@ -605,7 +557,61 @@ function LoginFormContent() {
           )}
 
           {/* VIEW: UNPAID RESUME PAYMENT & EXPIRED ACCESS PLAN SELECTION */}
-          {unpaidPaymentInfo && authView === 'auth' ? (
+          {unpaidPaymentInfo && authView === 'auth' && couponStep ? (
+            /* VIEW: COUPON PAGE (after email verification, and when the subscription has expired) */
+            <div className="space-y-6">
+              <div className="text-center">
+                <span className="text-3xl">🎟️</span>
+                <h3 className="text-lg font-black text-slate-900 mt-2">
+                  {unpaidPaymentInfo.error === 'access_expired' ? 'Access Expired — Have a Coupon?' : 'Have a Coupon Code?'}
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-1">
+                  Enter a valid coupon to unlock all features free, or continue to choose a plan and pay.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    maxLength={50}
+                    placeholder="Enter coupon code"
+                    disabled={loading}
+                    className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRedeemCoupon}
+                    disabled={loading || !couponCode.trim()}
+                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold disabled:opacity-50 transition-colors"
+                  >
+                    {loading ? 'Applying...' : 'Apply'}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { setErrorMsg(""); setSuccessMsg(""); setAppliedCoupon(null); setCouponStep(false); }}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all disabled:opacity-60"
+                >
+                  <span>Continue without coupon</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setUnpaidPaymentInfo(null); setErrorMsg(""); setSuccessMsg(""); }}
+                  disabled={loading}
+                  className="w-full text-center text-xs font-bold text-slate-500 hover:text-slate-700 py-1.5 transition-colors"
+                >
+                  Return to Sign In
+                </button>
+              </div>
+            </div>
+          ) : unpaidPaymentInfo && authView === 'auth' ? (
             <div className="space-y-6">
               <div className="text-center">
                 <span className="text-3xl">💳</span>
@@ -676,6 +682,12 @@ function LoginFormContent() {
                   </div>
                 </div>
 
+                {appliedCoupon && (
+                  <div className="flex justify-between items-center text-xs font-bold text-emerald-700">
+                    <span>Coupon {appliedCoupon.code}</span>
+                    <span>{appliedCoupon.discount_percent}% off · {appliedCoupon.days} days access</span>
+                  </div>
+                )}
                 <div className="border-t border-slate-200/60 pt-3 flex justify-between items-center text-sm font-black">
                   <span className="text-slate-800">Total Amount Due:</span>
                   <span className="text-orange-600 text-base">₹{(unpaidPaymentInfo.amount / 100).toLocaleString('en-IN')}</span>
@@ -699,31 +711,14 @@ function LoginFormContent() {
                   )}
                 </button>
                 
-                <div className="border-t border-slate-200/60 pt-3">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Have a coupon code?
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                      maxLength={50}
-                      placeholder="Enter coupon code"
-                      disabled={loading}
-                      className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-orange-500/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRedeemCoupon}
-                      disabled={loading || !couponCode.trim()}
-                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold disabled:opacity-50 transition-colors"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-1.5">Valid coupons unlock all features free for 2 months.</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => { setErrorMsg(""); setSuccessMsg(""); setAppliedCoupon(null); setUnpaidPaymentInfo((p: any) => ({ ...p, amount: p.plan === 'monthly' ? 49900 : 499900 })); setCouponStep(true); }}
+                  disabled={loading}
+                  className="w-full text-center text-xs font-bold text-orange-600 hover:text-orange-700 py-1.5 transition-colors"
+                >
+                  ← Back to coupon code
+                </button>
 
                 <button
                   type="button"
