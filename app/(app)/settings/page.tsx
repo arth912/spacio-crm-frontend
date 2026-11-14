@@ -8,12 +8,14 @@ import DataTable, { Column } from "../../components/DataTable";
 import ItemForm, { Category, Item } from "../../components/ItemForm";
 import { useToast } from "../../components/ToastProvider";
 import UserManagement from "../../components/UserManagement";
+import CouponManagement from "../../components/CouponManagement";
 import { api, inr, readStoredUser, PRICING_LABEL } from "../../lib/api";
 
-type Tab = "catalogue" | "users";
+type Tab = "catalogue" | "users" | "coupons";
 const TABS: { id: Tab; label: string }[] = [
   { id: "catalogue", label: "General catalogue" },
   { id: "users", label: "User management" },
+  { id: "coupons", label: "Coupons" },
 ];
 
 export default function SettingsPage() {
@@ -46,6 +48,7 @@ export default function SettingsPage() {
         </div>
         {tab === "catalogue" && <GeneralCatalogue />}
         {tab === "users" && <UserManagement />}
+        {tab === "coupons" && <CouponManagement />}
       </main>
     </div>
   );
